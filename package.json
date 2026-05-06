@@ -1,9 +1,10 @@
 {
-  "name": "jarvis-earbuds-mvp",
+  "name": "devpods",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop-first MVP for the developer earbuds bridge, simulator, and local Jarvis runtime.",
+  "description": "Android-first developer voice relay and desktop bridge for DevPods.",
   "bin": {
+    "devpods": "dist/src/cli/jarvis-earbuds.js",
     "jarvis-earbuds": "dist/src/cli/jarvis-earbuds.js"
   },
   "scripts": {
@@ -12,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:bridge": "tsx src/cli/jarvis-earbuds.ts start",
+    "devpods": "tsx src/cli/jarvis-earbuds.ts",
     "cli": "tsx src/cli/jarvis-earbuds.ts",
     "send:event": "tsx simulation/fake-earbud-events/send-event.ts",
     "say": "tsx simulation/fake-earbud-events/say.ts",

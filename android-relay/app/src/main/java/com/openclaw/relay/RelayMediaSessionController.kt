@@ -8,7 +8,7 @@ import androidx.media3.session.MediaSession
 
 class RelayMediaSessionController(
     context: Context,
-    private val onWakeRequested: (String) -> Unit,
+    private val onWakeRequested: (RelayWakeSignal) -> Unit,
 ) {
     private val player = ExoPlayer.Builder(context).build()
 
@@ -31,7 +31,15 @@ class RelayMediaSessionController(
                     KeyEvent.KEYCODE_HEADSETHOOK,
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                     KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                        onWakeRequested("headset_button_single")
+                        onWakeRequested(
+                            RelayWakeSignal(
+                                trigger = "headset_button_single",
+                                source = "physical_media_button",
+                                sourceLabel = "Physical headset media button",
+                                keyLabel = describeKeyCode(keyEvent.keyCode),
+                                controllerPackage = controllerInfo.packageName.takeIf { value -> value.isNotBlank() },
+                            ),
+                        )
                         true
                     }
 
@@ -44,5 +52,14 @@ class RelayMediaSessionController(
     fun release() {
         mediaSession.release()
         player.release()
+    }
+
+    private fun describeKeyCode(keyCode: Int): String {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_HEADSETHOOK -> "Headset hook"
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "Play or pause"
+            KeyEvent.KEYCODE_MEDIA_PLAY -> "Play"
+            else -> "Key code $keyCode"
+        }
     }
 }

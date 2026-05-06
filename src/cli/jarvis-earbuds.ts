@@ -73,7 +73,7 @@ async function main(): Promise<void> {
           process.stderr.write('Warning: bridge traffic is cleartext over HTTP. Use only on a trusted LAN.\n');
         }
         process.stdout.write(
-          `Jarvis bridge listening on http://${host}:${port} (${formatRuntimeSummary(runtimeOptions)})\n`,
+          `DevPods Bridge listening on http://${host}:${port} (${formatRuntimeSummary(runtimeOptions)})\n`,
         );
       });
       return;
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
     }
     default:
       process.stdout.write(
-        'Usage: jarvis-earbuds <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path]\n',
+        'Usage: devpods <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path]\n',
       );
   }
 }

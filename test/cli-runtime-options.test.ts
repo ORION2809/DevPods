@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -30,6 +31,17 @@ describe('resolveBrainMode', () => {
 });
 
 describe('resolveBridgeCommandRuntimeOptions', () => {
+  it('exposes DevPods as the primary CLI alias while keeping the legacy binary', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')) as {
+      name: string;
+      bin: Record<string, string>;
+    };
+
+    expect(pkg.name).toBe('devpods');
+    expect(pkg.bin.devpods).toBe('dist/src/cli/jarvis-earbuds.js');
+    expect(pkg.bin['jarvis-earbuds']).toBe(pkg.bin.devpods);
+  });
+
   it('keeps local mode as the default runtime', () => {
     const options = resolveBridgeCommandRuntimeOptions({
       values: {},

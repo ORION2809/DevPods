@@ -18,7 +18,7 @@ Use the related docs for upstream context:
 
 The product-facing repository name is DevPods.
 
-The internal CLI and parts of the codebase still use `jarvis-earbuds` naming. That is an implementation legacy, not a separate product.
+The primary CLI name is `devpods`. The legacy `jarvis-earbuds` binary remains available as a compatibility alias while internal file names and historical test fixtures catch up.
 
 ## Executive Summary
 
@@ -95,13 +95,14 @@ This repository is no longer just a source scaffold. It has been validated throu
 ### Android relay MVP
 
 - foreground relay service
-- Compose operator UI
+- Compose product-demo UI with readiness, route, approval, and hardware-verification state
 - Android speech recognition adapter
 - Android TTS adapter
 - Bluetooth communication-device routing
 - activity-driven Android 15-safe automation path for debug builds
 - explicit approval, reject, cancel, and stop flows
 - installed-app emulator harness with action-id lifecycle checks
+- Windows laptop media-button probe for non-Android signal evidence
 
 ## What Is Not Implemented
 
@@ -182,6 +183,8 @@ The Android relay implementation now includes the following verified behavior:
 - local pending approval state is cleared after terminal actions and stop
 - cancel remains available for queued or running work without incorrectly re-enabling approve or reject
 - `STOP_RELAY` is validated through service-side confirmation and service disappearance checks
+- the UI exposes a hardware-verification card that distinguishes physical media-button wake, manual push-to-talk, and debug injection
+- the UI exposes speech-recognition readiness, TTS readiness, communication-route visibility, and a speaker self-test
 
 ### Installed-app emulator coverage
 
@@ -199,6 +202,13 @@ The checked-in script `simulation/android-relay/validate-installed-app.ps1` vali
 - relay stop with service shutdown confirmation
 
 This emulator coverage validates the service-side wake path through a synthetic `headset_button_single` event. It does not yet prove a physical media-button press from real headset hardware.
+
+### Current signal evidence
+
+- emulator-installed validation proves the Android service-side wake and approval lifecycle paths
+- manual Windows probe validation on the connected laptop observed a real `MEDIA_PLAY_PAUSE` event from the paired earbuds
+
+That means one physical earbud media-key path is now proven on Windows, but the decisive Android hardware validation still needs to be captured on a real device.
 
 ## Safety Model
 
@@ -255,6 +265,7 @@ The bridge does not expose arbitrary shell execution from spoken text.
 npm run typecheck
 npm test
 npm run build
+npm run openclaw:smoke
 ```
 
 ```powershell
@@ -268,7 +279,7 @@ cd ..
 ### Current automated coverage
 
 - 15 test files
-- 92 tests
+- 95 tests
 
 The final closeout also included a focused revalidation of the process adapter timeout path after tightening Windows timeout completion semantics so background queues do not advance before timed-out process trees are actually gone.
 

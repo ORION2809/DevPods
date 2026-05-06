@@ -74,7 +74,7 @@ export async function getLatestCiFailure(
     const response = await fetchImpl(requestUrl, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'jarvis-earbuds-mvp',
+        'User-Agent': 'devpods',
         'X-GitHub-Api-Version': '2022-11-28',
       },
       signal: AbortSignal.timeout(10000),

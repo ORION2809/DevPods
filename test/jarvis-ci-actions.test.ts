@@ -13,7 +13,7 @@ class MemoryNotifier implements Notifier {
   }
 }
 
-describe('jarvis ci actions', () => {
+describe('DevPods CI actions', () => {
   let repoDir: string;
   let auditLogPath: string;
 
@@ -111,7 +111,7 @@ describe('jarvis ci actions', () => {
     expect(requestUrl.searchParams.get('per_page')).toBe('10');
     expect(requestOptions.headers).toMatchObject({
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'jarvis-earbuds-mvp',
+      'User-Agent': 'devpods',
       'X-GitHub-Api-Version': '2022-11-28',
     });
   });

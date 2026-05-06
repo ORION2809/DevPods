@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
+import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -29,9 +30,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val relayViewModel: RelayViewModel by viewModels()
@@ -62,6 +67,7 @@ class MainActivity : ComponentActivity() {
                     onCheckHealth = { relayViewModel.checkHealth(context) },
                     onQuickStatus = { relayViewModel.quickStatus(context) },
                     onWakeAndListen = { relayViewModel.wakeAndListen(context) },
+                    onTestSpeaker = { relayViewModel.testSpeaker(context) },
                     onApprove = { relayViewModel.approve(context) },
                     onReject = { relayViewModel.reject(context) },
                     onCancel = { relayViewModel.cancel(context) },
@@ -146,10 +152,15 @@ private fun RelayScreen(
     onCheckHealth: () -> Unit,
     onQuickStatus: () -> Unit,
     onWakeAndListen: () -> Unit,
+    onTestSpeaker: () -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    var showAdvancedSettings by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val primaryState = derivePrimaryState(state)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -157,77 +168,134 @@ private fun RelayScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("OpenClaw Relay for Android", style = MaterialTheme.typography.headlineSmall)
+        Text("DevPods Relay", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Low-latency transcript-first relay for ordinary Bluetooth earbuds.",
+            "Android-first voice relay for headset controls, developer commands, and short spoken replies.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        OutlinedTextField(
-            value = state.config.bridgeBaseUrl,
-            onValueChange = onBridgeBaseUrlChanged,
-            label = { Text("Bridge base URL") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
+        RelayStatusCard(title = "Current state") {
+            Text(primaryState.first, style = MaterialTheme.typography.titleLarge)
+            Text(primaryState.second)
+            Text("Bridge: ${state.bridgeStatus}")
+            Text("Audio route: ${state.audioRoute.status}")
+        }
 
-        OutlinedTextField(
-            value = state.config.relayToken,
-            onValueChange = onRelayTokenChanged,
-            label = { Text("Relay bearer token") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
+        RelayStatusCard(title = "Primary actions") {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onRequestPermissions, modifier = Modifier.weight(1f)) {
+                    Text("Permissions")
+                }
+                Button(onClick = onStartRelay, modifier = Modifier.weight(1f)) {
+                    Text("Start Relay")
+                }
+                Button(onClick = onStopRelay, modifier = Modifier.weight(1f)) {
+                    Text("Stop")
+                }
+            }
 
-        OutlinedTextField(
-            value = state.config.workspace,
-            onValueChange = onWorkspaceChanged,
-            label = { Text("Workspace") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCheckHealth, modifier = Modifier.weight(1f)) {
+                    Text("Health")
+                }
+                Button(onClick = onQuickStatus, modifier = Modifier.weight(1f)) {
+                    Text("Quick Status")
+                }
+                Button(onClick = onWakeAndListen, modifier = Modifier.weight(1f)) {
+                    Text("Push To Talk")
+                }
+            }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onTestSpeaker, modifier = Modifier.weight(1f)) {
+                    Text("Speaker Test")
+                }
+                Button(
+                    onClick = { showAdvancedSettings = !showAdvancedSettings },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(if (showAdvancedSettings) "Hide Settings" else "Advanced")
+                }
+            }
+        }
+
+        if (showAdvancedSettings) {
+            RelayStatusCard(title = "Advanced settings") {
+                OutlinedTextField(
+                    value = state.config.bridgeBaseUrl,
+                    onValueChange = onBridgeBaseUrlChanged,
+                    label = { Text("Bridge base URL") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = state.config.relayToken,
+                    onValueChange = onRelayTokenChanged,
+                    label = { Text("Relay bearer token") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = state.config.workspace,
+                    onValueChange = onWorkspaceChanged,
+                    label = { Text("Workspace") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+        }
+
+        RelayStatusCard(title = "Readiness") {
+            Text("Speech recognition: ${if (state.speechRecognitionAvailable) "Ready" else "Unavailable"}")
+            Text("Text to speech: ${if (state.ttsReady) "Ready" else "Starting"}")
+            Text("Route status: ${state.audioRoute.status}")
+            Text("Selected device: ${formatRouteDevice(state.audioRoute)}")
+            Text("Available devices: ${state.audioRoute.availableDevices}")
+        }
+
+        RelayStatusCard(title = "Hardware verification") {
+            val wakeSignal = state.lastWakeSignal
+            Text("Wake source: ${wakeSignal?.sourceLabel ?: "No wake signal captured yet"}")
+            Text("Trigger: ${wakeSignal?.trigger ?: "none"}")
+            Text("Media key: ${wakeSignal?.keyLabel ?: "none"}")
+            Text("Controller package: ${wakeSignal?.controllerPackage ?: "unknown"}")
+            Text("Observed at: ${formatTimestamp(context, wakeSignal?.receivedAtMs)}")
+            Text(
+                if (wakeSignal?.source == "physical_media_button") {
+                    "Physical headset media-button delivery has been observed on this device."
+                } else {
+                    "Physical headset wake is not verified yet. Use a real earbud press to confirm this path."
+                },
+            )
+        }
+
+        RelayStatusCard(title = "Approval controls") {
             Button(onClick = onRequestPermissions, modifier = Modifier.weight(1f)) {
-                Text("Permissions")
+                Text("Pending action: ${state.pendingActionId ?: "none"}")
             }
-            Button(onClick = onStartRelay, modifier = Modifier.weight(1f)) {
-                Text("Start Relay")
-            }
-            Button(onClick = onStopRelay, modifier = Modifier.weight(1f)) {
-                Text("Stop")
-            }
-        }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onCheckHealth, modifier = Modifier.weight(1f)) {
-                Text("Health")
-            }
-            Button(onClick = onQuickStatus, modifier = Modifier.weight(1f)) {
-                Text("Quick Status")
-            }
-            Button(onClick = onWakeAndListen, modifier = Modifier.weight(1f)) {
-                Text("Push To Talk")
-            }
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onApprove, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
-                Text("Approve")
-            }
-            Button(onClick = onReject, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
-                Text("Reject")
-            }
-            Button(onClick = onCancel, modifier = Modifier.weight(1f), enabled = state.pendingActionId != null) {
-                Text("Cancel")
+            Text("Summary: ${state.pendingApprovalSummary ?: "none"}")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onApprove, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
+                    Text("Approve")
+                }
+                Button(onClick = onReject, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
+                    Text("Reject")
+                }
+                Button(onClick = onCancel, modifier = Modifier.weight(1f), enabled = state.pendingActionId != null) {
+                    Text("Cancel")
+                }
             }
         }
 
         RelayStatusCard(title = "Service") {
             Text("Running: ${state.isServiceRunning}")
             Text("Listening: ${state.isListening}")
+            Text("Thinking: ${state.isAwaitingBridgeResponse}")
+            Text("Speaking: ${state.isSpeaking}")
             Text("Last headset event: ${state.lastHeadsetEvent ?: "none"}")
-            Text("Bridge: ${state.bridgeStatus}")
         }
 
         RelayStatusCard(title = "Latest Interaction") {
@@ -240,15 +308,12 @@ private fun RelayScreen(
             Text("Status: ${state.lastResponseStatus ?: "none"}")
         }
 
-        RelayStatusCard(title = "Approval") {
-            Text("Pending action id: ${state.pendingActionId ?: "none"}")
-            Text("Pending summary: ${state.pendingApprovalSummary ?: "none"}")
-        }
-
-        RelayStatusCard(title = "Latency") {
+        RelayStatusCard(title = "Diagnostics") {
             Text("Health: ${state.latency.lastHealthMs?.toString() ?: "-"} ms")
             Text("Bridge command: ${state.latency.lastBridgeCommandMs?.toString() ?: "-"} ms")
             Text("Speech started at: ${state.latency.lastSpeechStartedAtMs?.toString() ?: "-"}")
+            Text("Last speech error: ${state.lastSpeechError ?: "none"}")
+            Text("Last speaker error: ${state.lastTtsError ?: "none"}")
         }
 
         if (!state.errorMessage.isNullOrBlank()) {
@@ -257,6 +322,34 @@ private fun RelayScreen(
             }
         }
     }
+}
+
+private fun derivePrimaryState(state: RelayUiState): Pair<String, String> {
+    return when {
+        !state.errorMessage.isNullOrBlank() -> "Attention needed" to state.errorMessage
+        !state.speechRecognitionAvailable -> "Speech unavailable" to "Enable speech recognition on this device before using headset wake or push-to-talk."
+        !state.ttsReady -> "Speaker warming up" to "Text-to-speech is still initializing. Use Speaker Test when it becomes ready."
+        state.isListening -> "Listening" to "Speak a short developer request through the active headset or the phone microphone."
+        state.isAwaitingBridgeResponse -> "Thinking" to "DevPods Bridge is processing the current request."
+        state.isSpeaking -> "Speaking" to "A spoken reply is currently playing through the selected communication route."
+        state.pendingApprovalSummary != null -> "Approval required" to state.pendingApprovalSummary
+        state.isServiceRunning && state.bridgeStatus.startsWith("Healthy") -> "Ready" to "Relay is running and the bridge is responding."
+        state.isServiceRunning -> "Relay running" to "Use Health to confirm the bridge before starting a live session."
+        else -> "Start the relay" to "Grant permissions, verify the bridge, then start DevPods Relay."
+    }
+}
+
+private fun formatRouteDevice(snapshot: RelayAudioRouteSnapshot): String {
+    return listOfNotNull(snapshot.selectedDeviceType, snapshot.selectedDeviceName).joinToString(separator = " · ")
+        .ifBlank { "none" }
+}
+
+private fun formatTimestamp(context: android.content.Context, value: Long?): String {
+    if (value == null) {
+        return "never"
+    }
+
+    return DateFormat.getTimeFormat(context).format(Date(value))
 }
 
 @Composable

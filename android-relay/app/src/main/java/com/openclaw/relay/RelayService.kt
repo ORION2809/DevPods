@@ -28,6 +28,7 @@ class RelayService : Service() {
         const val ACTION_CHECK_HEALTH = "com.openclaw.relay.action.CHECK_HEALTH"
         const val ACTION_WAKE_AND_LISTEN = "com.openclaw.relay.action.WAKE_AND_LISTEN"
         const val ACTION_QUICK_STATUS = "com.openclaw.relay.action.QUICK_STATUS"
+        const val ACTION_TEST_SPEAKER = "com.openclaw.relay.action.TEST_SPEAKER"
         const val ACTION_APPROVE = "com.openclaw.relay.action.APPROVE"
         const val ACTION_REJECT = "com.openclaw.relay.action.REJECT"
         const val ACTION_CANCEL = "com.openclaw.relay.action.CANCEL"
@@ -58,10 +59,18 @@ class RelayService : Service() {
     override fun onCreate() {
         super.onCreate()
         speechRecognizer = AndroidSpeechRecognizer(this)
-        ttsSpeaker = AndroidTtsSpeaker(this, RelayStateStore::setError)
+        RelayStateStore.setSpeechRecognitionAvailable(speechRecognizer.isRecognitionAvailable())
+        RelayStateStore.setTtsReady(false)
+        ttsSpeaker = AndroidTtsSpeaker(
+            this,
+            onError = RelayStateStore::recordTtsError,
+            onReadyChanged = RelayStateStore::setTtsReady,
+            onSpeakingChanged = RelayStateStore::markSpeaking,
+        )
         audioRouter = BluetoothAudioRouter(this)
+        RelayStateStore.setAudioRoute(audioRouter.snapshot())
         mediaSessionController = RelayMediaSessionController(this) {
-            RelayStateStore.setLastHeadsetEvent(it)
+            RelayStateStore.setWakeSignal(it)
             beginListening(it)
         }
 
@@ -78,10 +87,20 @@ class RelayService : Service() {
         )
 
         when (intent?.action ?: ACTION_START_RELAY) {
-            ACTION_START_RELAY -> checkBridgeHealth()
+            ACTION_START_RELAY -> {
+                RelayStateStore.setAudioRoute(audioRouter.snapshot())
+                checkBridgeHealth()
+            }
             ACTION_STOP_RELAY -> stopSelf()
             ACTION_CHECK_HEALTH -> checkBridgeHealth()
-            ACTION_WAKE_AND_LISTEN -> beginListening(intent?.getStringExtra(EXTRA_TRIGGER) ?: "android_push_to_talk")
+            ACTION_WAKE_AND_LISTEN -> beginListening(
+                RelayWakeSignal(
+                    trigger = intent?.getStringExtra(EXTRA_TRIGGER) ?: "android_push_to_talk",
+                    source = "manual_push_to_talk",
+                    sourceLabel = "Push-to-talk button",
+                ),
+            )
+
             ACTION_QUICK_STATUS -> sendBridgeEvent(
                 event = RelayBridgeEvent(
                     sessionId = RelayStateStore.state.value.config.sessionId,
@@ -90,6 +109,16 @@ class RelayService : Service() {
                     timestamp = System.currentTimeMillis(),
                 ),
             )
+
+            ACTION_TEST_SPEAKER -> {
+                if (!RelayStateStore.state.value.ttsReady) {
+                    RelayStateStore.recordTtsError("Text-to-speech is still initializing. Please wait before running the speaker test.")
+                    return START_STICKY
+                }
+
+                RelayStateStore.markSpeechStarted(System.currentTimeMillis())
+                ttsSpeaker.speak("DevPods Relay is ready.")
+            }
 
             ACTION_APPROVE -> sendApprovalEvent("android_approve", intent?.getStringExtra(EXTRA_PENDING_ACTION_ID))
             ACTION_REJECT -> sendApprovalEvent("android_reject", intent?.getStringExtra(EXTRA_PENDING_ACTION_ID))
@@ -105,6 +134,8 @@ class RelayService : Service() {
     override fun onDestroy() {
         RelayStateStore.markServiceRunning(false)
         RelayStateStore.markListening(false)
+        RelayStateStore.markAwaitingBridgeResponse(false)
+        RelayStateStore.markSpeaking(false)
         RelayStateStore.clearPendingAction()
         speechRecognizer.destroy()
         ttsSpeaker.close()
@@ -132,15 +163,19 @@ class RelayService : Service() {
         }
     }
 
-    private fun beginListening(trigger: String) {
-        RelayStateStore.setLastHeadsetEvent(trigger)
+    private fun beginListening(wakeSignal: RelayWakeSignal) {
+        RelayStateStore.setWakeSignal(wakeSignal)
         RelayStateStore.markListening(true)
+        RelayStateStore.markAwaitingBridgeResponse(false)
         RelayStateStore.setPartialTranscript("")
         RelayStateStore.setError("")
 
         if (RelayStateStore.state.value.config.useBluetoothRouting) {
-            if (!audioRouter.routeCommunicationAudio()) {
-                RelayStateStore.setError("Bluetooth routing failed. Check the connected audio device.")
+            val routeSnapshot = audioRouter.routeCommunicationAudio()
+            RelayStateStore.setAudioRoute(routeSnapshot)
+            if (!routeSnapshot.isActive) {
+                RelayStateStore.recordSpeechError("Bluetooth routing failed. Check the connected audio device.")
+                return
             }
         }
 
@@ -153,15 +188,14 @@ class RelayService : Service() {
                     RelayBridgeEvent(
                         sessionId = RelayStateStore.state.value.config.sessionId,
                         workspace = RelayStateStore.state.value.config.workspace,
-                        event = trigger,
+                        event = wakeSignal.trigger,
                         timestamp = System.currentTimeMillis(),
                         utterance = transcript,
                     ),
                 )
             },
             onError = { error ->
-                RelayStateStore.markListening(false)
-                RelayStateStore.setError(error)
+                RelayStateStore.recordSpeechError(error)
             },
         )
     }
@@ -188,6 +222,7 @@ class RelayService : Service() {
 
     private fun sendBridgeEvent(event: RelayBridgeEvent) {
         val config = RelayStateStore.state.value.config
+        RelayStateStore.markAwaitingBridgeResponse(true)
         serviceScope.launch {
             bridgeClient.sendEvent(config, event)
                 .onSuccess { result ->
@@ -205,6 +240,7 @@ class RelayService : Service() {
                     )
                 }
                 .onFailure { error ->
+                    RelayStateStore.markAwaitingBridgeResponse(false)
                     RelayStateStore.setError(error.message ?: "Bridge request failed")
                     Log.e(TAG, "event=${event.event} failure: ${error.message}", error)
                 }
@@ -244,7 +280,13 @@ class RelayService : Service() {
             return
         }
 
-        RelayStateStore.setLastHeadsetEvent(eventName)
+        RelayStateStore.setWakeSignal(
+            RelayWakeSignal(
+                trigger = eventName,
+                source = "debug_injection",
+                sourceLabel = "Debug automation",
+            ),
+        )
         sendBridgeEvent(
             RelayBridgeEvent(
                 sessionId = RelayStateStore.state.value.config.sessionId,

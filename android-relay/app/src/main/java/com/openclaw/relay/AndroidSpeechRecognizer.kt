@@ -11,12 +11,14 @@ class AndroidSpeechRecognizer(context: Context) {
     private val appContext = context.applicationContext
     private var speechRecognizer: SpeechRecognizer? = null
 
+    fun isRecognitionAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(appContext)
+
     fun startListening(
         onPartialTranscript: (String) -> Unit,
         onFinalTranscript: (String) -> Unit,
         onError: (String) -> Unit,
     ) {
-        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+        if (!isRecognitionAvailable()) {
             onError("Speech recognition is unavailable on this device.")
             return
         }

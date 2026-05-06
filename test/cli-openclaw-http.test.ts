@@ -126,7 +126,7 @@ async function waitForGatewayHealthState(port: number, expectedState: string): P
   throw new Error(`OpenClaw gateway health never reached ${expectedState}.`);
 }
 
-describe('jarvis-earbuds CLI OpenClaw mode', () => {
+describe('DevPods CLI OpenClaw mode', () => {
   let repoDir: string;
   let workspaceConfigDir: string;
   let workspaceConfigPath: string;
@@ -158,6 +158,12 @@ describe('jarvis-earbuds CLI OpenClaw mode', () => {
   afterEach(() => {
     fs.rmSync(repoDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     fs.rmSync(workspaceConfigDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  it('prints DevPods usage when no command is provided', async () => {
+    const stdout = await runCli([]);
+
+    expect(stdout).toContain('Usage: devpods <start|local|send|listen|say|health>');
   });
 
   it('routes the local CLI command through OpenClaw HTTP rewrite mode', async () => {
@@ -291,6 +297,41 @@ describe('jarvis-earbuds CLI OpenClaw mode', () => {
       });
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+
+  it('extends the bridge server timeout when OpenClaw rewrites can run longer than the default request window', async () => {
+    const registry: WorkspaceRegistry = {
+      defaultWorkspaceId: 'current_repo',
+      workspaces: [
+        {
+          id: 'current_repo',
+          label: 'temp_repo',
+          rootPath: repoDir,
+          allowedIntents: ['quick_status'],
+          approvalRequiredIntents: [],
+          hardApprovalIntents: [],
+          commands: {},
+        },
+      ],
+    };
+    const { server } = createBridgeServer({
+      registry,
+      brainMode: 'openclaw',
+      openclaw: {
+        transport: 'http',
+        baseUrl: 'http://127.0.0.1:8080',
+        timeoutMs: 120_000,
+      },
+    });
+
+    try {
+      expect(server.timeout).toBe(150_000);
+    } finally {
+      if (server.listening) {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+      }
     }
   });
 

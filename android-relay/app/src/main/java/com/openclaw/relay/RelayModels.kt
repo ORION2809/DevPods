@@ -16,12 +16,35 @@ data class RelayLatencySnapshot(
     val lastSpeechStartedAtMs: Long? = null,
 )
 
+data class RelayWakeSignal(
+    val trigger: String,
+    val source: String,
+    val sourceLabel: String,
+    val keyLabel: String? = null,
+    val controllerPackage: String? = null,
+    val receivedAtMs: Long = System.currentTimeMillis(),
+)
+
+data class RelayAudioRouteSnapshot(
+    val isActive: Boolean = false,
+    val status: String = "Not verified",
+    val selectedDeviceName: String? = null,
+    val selectedDeviceType: String? = null,
+    val availableDevices: String = "none",
+)
+
 data class RelayUiState(
     val config: RelayConfig = RelayConfig(),
     val isServiceRunning: Boolean = false,
     val isListening: Boolean = false,
+    val isAwaitingBridgeResponse: Boolean = false,
+    val isSpeaking: Boolean = false,
     val lastHeadsetEvent: String? = null,
+    val lastWakeSignal: RelayWakeSignal? = null,
     val bridgeStatus: String = "Unknown",
+    val speechRecognitionAvailable: Boolean = false,
+    val ttsReady: Boolean = false,
+    val audioRoute: RelayAudioRouteSnapshot = RelayAudioRouteSnapshot(),
     val lastTranscript: String = "",
     val partialTranscript: String = "",
     val lastResponseSpeak: String = "",
@@ -30,6 +53,8 @@ data class RelayUiState(
     val pendingActionId: String? = null,
     val pendingApprovalSummary: String? = null,
     val latency: RelayLatencySnapshot = RelayLatencySnapshot(),
+    val lastSpeechError: String? = null,
+    val lastTtsError: String? = null,
     val errorMessage: String? = null,
 )
 

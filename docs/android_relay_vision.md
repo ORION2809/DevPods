@@ -6,7 +6,7 @@ Any Bluetooth earbuds
         ↓
 Android Relay App
         ↓
-Jarvis Bridge / OpenClaw Runtime
+DevPods Bridge / OpenClaw Runtime
         ↓
 Developer tools
         ↓
@@ -55,7 +55,7 @@ The Android Relay app should own only four things:
 
 1. Earbud trigger capture
 2. Mic/listening session
-3. Network call to Jarvis bridge
+3. Network call to DevPods Bridge
 4. TTS/audio response through earbuds
 
 It should not own developer intelligence, repo actions, command policy, or OpenClaw orchestration. Your current architecture already says the bridge owns event ingestion/STT/TTS/routing/policy checks, while OpenClaw owns developer context, repo/CI inspection, command selection, and concise spoken summaries.
@@ -88,7 +88,7 @@ MVP architecture
                 │ HTTP/WebSocket over LAN
                 ▼
 ┌──────────────────────────────┐
-│ Desktop Jarvis Bridge         │
+│ DevPods Bridge                │
 │ policy, session, OpenClaw     │
 └───────────────┬──────────────┘
                 │
@@ -194,12 +194,12 @@ Phase 2 — Android Software Relay MVP
 
 Or more productized:
 
-OpenClaw Relay for Android
+DevPods Relay for Android
 Product vision statement
 
 Use this:
 
-OpenClaw Relay for Android turns ordinary Bluetooth earbuds into a hands-free developer control surface by capturing headset/media-button events, routing voice commands to the existing Jarvis bridge, and speaking short OpenClaw responses back through the earbuds — without firmware changes or custom hardware.
+DevPods Relay for Android turns ordinary Bluetooth earbuds into a hands-free developer control surface by capturing headset/media-button events, routing voice commands to the existing DevPods Bridge, and speaking short OpenClaw responses back through the earbuds — without firmware changes or custom hardware.
 
 That is tight and technically honest.
 

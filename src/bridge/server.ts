@@ -5,7 +5,8 @@ import { earbudEventSchema, type WorkspaceRegistry } from '../protocol/schemas';
 import { createBridgeRuntime, type BridgeRuntime, type BridgeRuntimeOptions } from './runtime';
 
 const MAX_REQUEST_BYTES = 8 * 1024;
-const SERVER_TIMEOUT_MS = 30_000;
+const DEFAULT_SERVER_TIMEOUT_MS = 30_000;
+const SERVER_TIMEOUT_BUFFER_MS = 30_000;
 
 class RequestBodyTooLargeError extends Error {
   constructor() {
@@ -79,12 +80,22 @@ export function createBridgeServer(options: BridgeServerOptions = {}): {
       response.end(JSON.stringify({ error: message }));
     }
   });
-  server.setTimeout(SERVER_TIMEOUT_MS);
+  server.setTimeout(resolveServerTimeoutMs(options));
 
   return {
     server,
     runtime,
   };
+}
+
+function resolveServerTimeoutMs(options: Pick<BridgeServerOptions, 'openclaw'>): number {
+  const openClawTimeoutMs = options.openclaw?.timeoutMs;
+
+  if (typeof openClawTimeoutMs !== 'number' || !Number.isFinite(openClawTimeoutMs) || openClawTimeoutMs <= 0) {
+    return DEFAULT_SERVER_TIMEOUT_MS;
+  }
+
+  return Math.max(DEFAULT_SERVER_TIMEOUT_MS, Math.floor(openClawTimeoutMs) + SERVER_TIMEOUT_BUFFER_MS);
 }
 
 function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions): {

@@ -67,6 +67,10 @@ class RelayViewModel : ViewModel() {
         ContextCompat.startForegroundService(context, intent)
     }
 
+    fun testSpeaker(context: Context) {
+        ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_TEST_SPEAKER))
+    }
+
     fun approve(context: Context) {
         ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_APPROVE))
     }

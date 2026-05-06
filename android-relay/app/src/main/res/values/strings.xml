@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OpenClaw Relay</string>
-    <string name="relay_notification_title">OpenClaw Relay active</string>
+    <string name="app_name">DevPods Relay</string>
+    <string name="relay_notification_title">DevPods Relay active</string>
     <string name="relay_notification_body">Listening for headset and push-to-talk commands.</string>
 </resources>

@@ -4,13 +4,15 @@
 
 This document defines the next practical product phase after the simulator-first desktop MVP.
 
-The goal is to prove that ordinary Bluetooth earbuds plus an Android phone can act as the software relay for Jarvis and OpenClaw without requiring firmware changes or custom hardware.
+The goal is to prove that ordinary Bluetooth earbuds plus an Android phone can act as the software relay for DevPods without requiring firmware changes or custom hardware.
+
+This is now the primary validation path for the product.
 
 ## Vision
 
 The Android phone becomes the relay layer:
 
-`Bluetooth earbuds -> Android Relay App -> Jarvis Bridge -> Developer tools -> spoken response back through earbuds`
+`Bluetooth earbuds -> DevPods Relay -> DevPods Bridge -> Developer tools -> spoken response back through earbuds`
 
 The relay phase is intentionally software-first and latency-first.
 
@@ -36,6 +38,7 @@ This repo now includes the bridge-side and mobile-side foundations for the Andro
 - a source-complete Android prototype exists under `android-relay/`
 - the Android project includes a checked-in Gradle wrapper and has passed both `assembleDebug` and `assembleRelease`
 - a checked-in emulator validation harness exists at `simulation/android-relay/validate-installed-app.ps1`
+- the app now surfaces product-state readiness, communication-route status, a speaker self-test, and a hardware-verification card for wake-source evidence
 
 ## Target Architecture
 
@@ -43,7 +46,7 @@ This repo now includes the bridge-side and mobile-side foundations for the Andro
 Bluetooth Earbuds
   -> Android Relay foreground service
   -> BridgeClient over HTTP on local network
-  -> Jarvis bridge policy and routing
+  -> DevPods Bridge policy and routing
   -> Optional OpenClaw rewrite path
   -> Short response returned to Android
   -> Android TTS back to earbuds
@@ -165,6 +168,22 @@ These automation hooks are debug-only surfaces. The installed-app harness target
 Debug builds should still be treated as test-only for this path: a debuggable app intentionally exposes these hooks for emulator and developer-device automation.
 
 Because this is emulator automation, `DEBUG_EVENT headset_button_single` validates the service-side wake path rather than a physical MediaSession button press from real headset hardware.
+
+The app now makes that distinction explicit in the UI: physical headset media-button wake, manual push-to-talk, and debug injection each appear as separate wake sources.
+
+## Manual Hardware Verification Path
+
+The next make-or-break check is real headset wake on Android hardware.
+
+Use this validation path on a physical Android device:
+
+1. Pair the earbuds to the phone.
+2. Start DevPods Relay and confirm the bridge health is healthy.
+3. Press the earbud media button.
+4. Confirm the hardware-verification card reports `Physical headset media button`.
+5. Speak a short command and confirm the UI moves through `Listening`, `Thinking`, and `Speaking`.
+
+If that wake source never appears, the product risk remains open for that device or earbud pair even if the emulator path is green.
 
 ## User Flows
 

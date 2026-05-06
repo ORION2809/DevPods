@@ -17,15 +17,66 @@ object RelayStateStore {
     }
 
     fun markServiceRunning(isRunning: Boolean) {
-        mutableState.update { it.copy(isServiceRunning = isRunning) }
+        mutableState.update {
+            if (isRunning) {
+                it.copy(
+                    isServiceRunning = true,
+                    errorMessage = null,
+                    lastSpeechError = null,
+                    lastTtsError = null,
+                )
+            } else {
+                it.copy(
+                    isServiceRunning = false,
+                    isListening = false,
+                    isAwaitingBridgeResponse = false,
+                    isSpeaking = false,
+                    pendingActionId = null,
+                    pendingApprovalSummary = null,
+                    errorMessage = null,
+                    lastSpeechError = null,
+                    lastTtsError = null,
+                )
+            }
+        }
     }
 
     fun markListening(isListening: Boolean) {
         mutableState.update { it.copy(isListening = isListening) }
     }
 
+    fun markAwaitingBridgeResponse(isAwaiting: Boolean) {
+        mutableState.update { it.copy(isAwaitingBridgeResponse = isAwaiting) }
+    }
+
+    fun markSpeaking(isSpeaking: Boolean) {
+        mutableState.update { it.copy(isSpeaking = isSpeaking) }
+    }
+
     fun setLastHeadsetEvent(value: String) {
         mutableState.update { it.copy(lastHeadsetEvent = value, errorMessage = null) }
+    }
+
+    fun setWakeSignal(value: RelayWakeSignal) {
+        mutableState.update {
+            it.copy(
+                lastHeadsetEvent = value.trigger,
+                lastWakeSignal = value,
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun setSpeechRecognitionAvailable(isAvailable: Boolean) {
+        mutableState.update { it.copy(speechRecognitionAvailable = isAvailable) }
+    }
+
+    fun setTtsReady(isReady: Boolean) {
+        mutableState.update { it.copy(ttsReady = isReady) }
+    }
+
+    fun setAudioRoute(snapshot: RelayAudioRouteSnapshot) {
+        mutableState.update { it.copy(audioRoute = snapshot) }
     }
 
     fun setPartialTranscript(value: String) {
@@ -64,6 +115,7 @@ object RelayStateStore {
                 lastResponseSpeak = response.speak,
                 lastResponseDisplay = response.display.orEmpty(),
                 lastResponseStatus = response.status,
+                isAwaitingBridgeResponse = false,
                 pendingActionId = response.actionId?.takeIf {
                     response.requiresApproval
                         || response.nextState == "approval_pending"
@@ -87,7 +139,33 @@ object RelayStateStore {
         mutableState.update { it.copy(pendingActionId = null, pendingApprovalSummary = null) }
     }
 
+    fun recordSpeechError(message: String) {
+        mutableState.update {
+            it.copy(
+                lastSpeechError = message,
+                isListening = false,
+                isAwaitingBridgeResponse = false,
+                errorMessage = message,
+            )
+        }
+    }
+
+    fun recordTtsError(message: String) {
+        mutableState.update {
+            it.copy(
+                lastTtsError = message,
+                isSpeaking = false,
+                errorMessage = message,
+            )
+        }
+    }
+
     fun setError(message: String) {
-        mutableState.update { it.copy(errorMessage = message) }
+        mutableState.update {
+            it.copy(
+                isAwaitingBridgeResponse = false,
+                errorMessage = message,
+            )
+        }
     }
 }

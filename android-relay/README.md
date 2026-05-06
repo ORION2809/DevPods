@@ -1,23 +1,36 @@
-# OpenClaw Relay For Android
+# DevPods Relay For Android
 
-This module is the Android Software Relay MVP for the developer-earbuds project.
+This module is the Android-first product validation surface for DevPods.
 
 It is intentionally transcript-first and latency-first:
 
 - Android owns wake triggers, STT, audio routing, and TTS.
-- The existing desktop bridge still owns session state, policy, approvals, repo actions, and optional OpenClaw rewriting.
+- The DevPods Bridge still owns session state, policy, approvals, repo actions, and optional OpenClaw rewriting.
 - The app talks to the bridge through the existing `GET /health` and `POST /events` contract.
 
 ## Current Structure
 
 - `app/` Android application module
-- `MainActivity` debug and operator UI
+- `MainActivity` product-demo UI with readiness, approval, and hardware verification
 - `RelayService` foreground relay service
 - `BridgeClient` low-overhead HTTP client for the bridge
 - `RelayMediaSessionController` headset and media-button wake handling
 - `AndroidSpeechRecognizer` local speech-recognition wrapper with partial results
 - `AndroidTtsSpeaker` on-device spoken response adapter
 - `BluetoothAudioRouter` communication-device routing for headset use
+
+## Readiness And Hardware Verification
+
+The app now surfaces product-state and verification data directly in the main screen:
+
+- a primary state card for `Ready`, `Listening`, `Thinking`, `Speaking`, `Approval required`, and `Attention needed`
+- explicit speech-recognition and text-to-speech readiness indicators
+- a visible communication-route summary with selected and available audio devices
+- a speaker self-test action
+- a hardware-verification card that distinguishes:
+	- physical headset media-button wake
+	- manual push-to-talk wake
+	- debug automation injection
 
 ## Latency Approach
 
@@ -77,9 +90,23 @@ It validates the emulator-installed debug APK against the host bridge by checkin
 
 The emulator harness validates the service-side wake path by injecting `headset_button_single`. It does not prove physical media-button delivery from real headset hardware.
 
+## Manual Hardware Verification
+
+To validate the real product risk on Android hardware:
+
+1. Pair real Bluetooth earbuds to an Android device.
+2. Start DevPods Relay and confirm the primary state reaches `Ready`.
+3. Press a supported physical media button on the earbuds.
+4. Confirm the hardware-verification card reports `Physical headset media button`.
+5. Speak a short command and confirm the UI transitions through `Listening`, `Thinking`, and `Speaking`.
+
+If the app only shows `Push-to-talk button` or `Debug automation`, the physical wake path is still unproven on that device and earbud pair.
+
+For laptop-side signal evidence on Windows, use `..\simulation\windows-relay\verify-media-buttons.ps1`. A manual run on the connected laptop has already observed `MEDIA_PLAY_PAUSE`, which proves one Windows media-key path from the paired earbuds. That does not replace the Android verification above.
+
 Run the bridge on the host with the same relay token expected by the Android debug app, then execute the validation script from the repo root:
 
 ```powershell
-npm run cli -- start --host 127.0.0.1 --relay-token android-emulator-token
+npm run devpods -- start --host 127.0.0.1 --relay-token android-emulator-token
 .\simulation\android-relay\validate-installed-app.ps1
 ```

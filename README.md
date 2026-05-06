@@ -13,10 +13,10 @@ DevPods turns earbuds into a developer control surface.
 The system captures earbud-style events, routes them through a local bridge with explicit policy and approval rules, optionally rewrites spoken responses with OpenClaw, and returns short, ear-safe responses back to the user. Today that loop is proven through a desktop-first bridge and an Android software relay MVP.
 
 > [!IMPORTANT]
-> Current status: DevPods is a validated software loop, not a finished hardware product. The bridge, policy model, OpenClaw runtime integration, Android relay app, and installed-app emulator flow are working. Real BLE transport, custom firmware, and broad real-earbud hardware validation are the next stages.
+> Current status: DevPods is a validated software loop, not a finished hardware product. The current primary product surface is DevPods Relay on Android, backed by DevPods Bridge on desktop. Real BLE transport, custom firmware, and broader real-earbud Android validation are the next stages.
 
 > [!NOTE]
-> The codebase still uses `jarvis-earbuds` as the internal CLI and package naming surface. The product-facing name for the repository is DevPods.
+> The primary CLI name is `devpods`. The legacy `jarvis-earbuds` binary is retained as a compatibility alias while internal filenames catch up.
 
 ## What DevPods Is
 
@@ -34,6 +34,20 @@ Earbud gesture or Android relay event
 ```
 
 That gives you a hands-free interface for developer tasks like quick repo status, CI summaries, approval-gated actions, and short spoken updates without giving away local execution safety.
+
+## Primary Validation Path
+
+The current product path is:
+
+```text
+Bluetooth earbuds
+	-> DevPods Relay on Android
+	-> DevPods Bridge on desktop
+	-> repo, CI, editor, and policy-backed actions
+	-> short spoken response back to the earbuds
+```
+
+The desktop simulator and CLI still matter, but they now support the Android-first product path rather than define it.
 
 ## Shipped Today
 
@@ -55,7 +69,7 @@ That gives you a hands-free interface for developer tasks like quick repo status
 ### Android relay MVP
 
 - Foreground relay service
-- Compose operator UI
+- Compose product-demo UI with readiness, approval, and hardware-verification cards
 - Speech recognition and TTS adapters
 - Headset/media-session wake path support
 - Explicit approval, reject, and cancel actions
@@ -115,7 +129,7 @@ npm install
 ### 2. Start the bridge
 
 ```bash
-npm run dev:bridge
+npm run devpods -- start --port 4545
 ```
 
 Or run the compiled CLI directly:
@@ -181,6 +195,8 @@ What is validated today:
 - relay start and explicit health check
 - quick status shortcut
 - synthetic headset wake event path
+- product-state UI for `Ready`, `Listening`, `Thinking`, `Speaking`, `Approval required`, and `Attention needed`
+- hardware-verification UI showing whether the last wake came from a physical media button, push-to-talk, or debug injection
 - approval prompt for `open file docs/vision.md`
 - cancel, second prompt, approve, and stop
 - explicit `pendingActionId` forwarding and stale-state cleanup checks
@@ -198,6 +214,14 @@ Run the installed-app emulator validation harness:
 ```
 
 Debug builds allow the automation hooks used by that harness. Treat those hooks as test-only surfaces on emulator or private developer devices.
+
+For laptop-side signal evidence on Windows, the repo now includes:
+
+```powershell
+.\simulation\windows-relay\verify-media-buttons.ps1 -DurationSeconds 30
+```
+
+Manual verification on the connected laptop has already observed a real `MEDIA_PLAY_PAUSE` event from the paired earbuds. That proves the earbuds can emit at least one standard Windows media-key signal, but it does not replace the remaining Android hardware validation path.
 
 ## Safety Model
 
@@ -230,7 +254,7 @@ cd ..
 .\simulation\android-relay\validate-installed-app.ps1
 ```
 
-The current automated test suite covers 15 test files and 92 tests.
+The current automated test suite covers 15 test files and 95 tests.
 
 ## Repository Layout
 
@@ -253,12 +277,13 @@ LibrePods was used as a local architecture and protocol reference during discove
 
 ## Documentation Map
 
-- [docs/vision.md](docs/vision.md): original product framing and firmware-first architecture direction
-- [docs/android_relay_vision.md](docs/android_relay_vision.md): Android software relay phase vision
+- [android-relay/README.md](android-relay/README.md): DevPods Relay setup, UI model, and validation entry points
+- [docs/09-android-software-relay-mvp.md](docs/09-android-software-relay-mvp.md): Android relay architecture, current evidence, and manual hardware-verification path
+- [docs/android_relay_vision.md](docs/android_relay_vision.md): Android-first product framing
 - [docs/06-openclaw-runtime-operations.md](docs/06-openclaw-runtime-operations.md): runtime flags, env vars, and OpenClaw transport modes
 - [docs/07-implementation-summary.md](docs/07-implementation-summary.md): detailed implementation state and engineering summary
 - [docs/08-acceptance-criteria-status.md](docs/08-acceptance-criteria-status.md): acceptance-criteria tracking
-- [docs/09-android-software-relay-mvp.md](docs/09-android-software-relay-mvp.md): Android relay architecture and validation scope
+- [docs/vision.md](docs/vision.md): original product framing and firmware-first architecture direction
 
 ## What Is Next
 

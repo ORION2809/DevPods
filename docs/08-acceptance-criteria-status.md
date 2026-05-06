@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document evaluates the current MVP against the acceptance criteria that matter most for the developer-earbuds experience.
+This document evaluates the current MVP against the acceptance criteria that matter most for the DevPods relay experience.
 
 It is intentionally practical. Each criterion is marked against the current repository state, the current automated validation surface, and the latest real OpenClaw smoke run.
 
