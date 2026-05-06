@@ -19,4 +19,5 @@ keystore.properties
 .env
 .env.local
 .env.*.local
+suggestions.md
 
