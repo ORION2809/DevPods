@@ -1,0 +1,34 @@
+{
+  "name": "jarvis-earbuds-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop-first MVP for the developer earbuds bridge, simulator, and local Jarvis runtime.",
+  "bin": {
+    "jarvis-earbuds": "dist/src/cli/jarvis-earbuds.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:bridge": "tsx src/cli/jarvis-earbuds.ts start",
+    "cli": "tsx src/cli/jarvis-earbuds.ts",
+    "send:event": "tsx simulation/fake-earbud-events/send-event.ts",
+    "say": "tsx simulation/fake-earbud-events/say.ts",
+    "relay:smoke": "tsx simulation/android-relay/smoke.ts",
+    "openclaw:smoke": "tsx simulation/openclaw-sandbox/smoke.ts",
+    "openclaw:latency:smoke": "tsx simulation/openclaw-latency/smoke.ts",
+    "openclaw:managed:smoke": "tsx simulation/openclaw-managed/smoke.ts"
+  },
+  "dependencies": {
+    "json5": "^2.2.3",
+    "openclaw": "^2026.4.27",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

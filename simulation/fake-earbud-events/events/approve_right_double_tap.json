@@ -1,0 +1,11 @@
+{
+  "source": "developer_earbuds_simulator",
+  "sessionId": "sim-session",
+  "workspace": "current_repo",
+  "device": "right_bud",
+  "event": "approve_right_double_tap",
+  "timestamp": 0,
+  "battery": 74,
+  "wearState": "in_ear",
+  "profile": "coding_mode"
+}

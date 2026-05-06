@@ -1,0 +1,53 @@
+{
+  "defaultWorkspaceId": "current_repo",
+  "workspaces": [
+    {
+      "id": "current_repo",
+      "label": "firmware_earphones",
+      "rootPath": "..",
+      "allowedIntents": [
+        "quick_status",
+        "summarize_diff",
+        "latest_ci_failure",
+        "run_tests",
+        "create_commit_message",
+        "open_file",
+        "commit_staged",
+        "push",
+        "deploy",
+        "delete",
+        "revert"
+      ],
+      "approvalRequiredIntents": [
+        "run_tests",
+        "open_file"
+      ],
+      "hardApprovalIntents": [
+        "commit_staged",
+        "push",
+        "deploy",
+        "delete",
+        "revert"
+      ],
+      "commands": {
+        "run_tests": {
+          "description": "Run workspace tests",
+          "command": "npm",
+          "args": [
+            "test"
+          ],
+          "timeoutMs": 120000
+        },
+        "deploy": {
+          "description": "Deploy current build",
+          "command": "npm",
+          "args": [
+            "run",
+            "build"
+          ],
+          "timeoutMs": 120000
+        }
+      }
+    }
+  ]
+}

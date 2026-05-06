@@ -1,0 +1,1 @@
+# Android relay MVP keeps release shrinking off for now.
