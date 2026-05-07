@@ -124,6 +124,8 @@ Required endpoints for the relay phase:
 
 No second control plane was introduced for Android. Approval, reject, cancel, and quick status all ride the same `/events` contract.
 
+The relay contract is now extended in one additive way for bounded autonomy. Bridge responses may include an optional `autonomy` object describing the current report or plan, the safe next intent, and the delay before automatic continuation.
+
 When the bridge binds to a non-loopback host, a relay bearer token is now mandatory. The transport is still plain HTTP in the current MVP, so deployments should stay on a trusted LAN or add a TLS boundary externally.
 
 ## Latency Strategy
@@ -171,6 +173,8 @@ Because this is emulator automation, `DEBUG_EVENT headset_button_single` validat
 
 The app now makes that distinction explicit in the UI: physical headset media-button wake, manual push-to-talk, and debug injection each appear as separate wake sources.
 
+The app now also exposes the active autonomy state in the UI so a device test can confirm whether the relay is waiting to continue, waiting for a user objection, or idle.
+
 ## Manual Hardware Verification Path
 
 The next make-or-break check is real headset wake on Android hardware.
@@ -184,6 +188,13 @@ Use this validation path on a physical Android device:
 5. Speak a short command and confirm the UI moves through `Listening`, `Thinking`, and `Speaking`.
 
 If that wake source never appears, the product risk remains open for that device or earbud pair even if the emulator path is green.
+
+The current real-device field state is now more precise than that general rule:
+
+- RMX3990 + realme Buds Air7 now produces partial real-device recognition through the relay path.
+- Physical tap delivery is still intermittent, so the wake trigger is not yet reliable enough for a production claim.
+- Assistant long press remains the most reliable fallback trigger for status and interruption on this stack.
+- The operational notes for this exact device pair now live in `docs/10-rmx3990-buds-air7-field-notes.md`.
 
 ## User Flows
 
@@ -207,6 +218,14 @@ If that wake source never appears, the product risk remains open for that device
 - Android surfaces approve, reject, and cancel
 - Android sends `android_approve`, `android_reject`, or `android_cancel` with `pendingActionId`
 
+### Bounded Autonomy
+
+- Android receives a background-work completion response with an optional `autonomy` object
+- the relay speaks the report and displays the next step in the autonomy card
+- if the user stays silent, the relay sends `android_autonomy_continue`
+- if the user taps or uses assistant long press during active implementation, the relay interrupts the current flow, captures speech, and sends `android_autonomy_interrupt`
+- the bridge answers with an updated bounded plan instead of opening arbitrary tool autonomy
+
 ## Acceptance Criteria
 
 The relay phase is considered successful when all of the following are true:
@@ -216,6 +235,7 @@ The relay phase is considered successful when all of the following are true:
 - voice command requests reach the bridge over the existing `/events` contract
 - Android speaks only the `speak` field from the bridge response
 - approval and cancel preserve the existing `actionId` lifecycle
+- bounded autonomy preserves the same safety envelope as the existing allowlisted bridge intents
 - the bridge stays silent for `android_relay` sessions
 - the relay path remains low-latency enough to feel immediate for quick status and approval prompts
 

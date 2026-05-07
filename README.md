@@ -200,6 +200,8 @@ What is validated today:
 - approval prompt for `open file docs/vision.md`
 - cancel, second prompt, approve, and stop
 - explicit `pendingActionId` forwarding and stale-state cleanup checks
+- bounded autonomy loop for safe background work: spoken completion report, silence-driven continuation, and interrupt-to-replan
+- real-device field notes for RMX3990 + realme Buds Air7 in [docs/10-rmx3990-buds-air7-field-notes.md](docs/10-rmx3990-buds-air7-field-notes.md)
 
 Run the Android relay smoke harness against the bridge:
 
@@ -222,6 +224,8 @@ For laptop-side signal evidence on Windows, the repo now includes:
 ```
 
 Manual verification on the connected laptop has already observed a real `MEDIA_PLAY_PAUSE` event from the paired earbuds. That proves the earbuds can emit at least one standard Windows media-key signal, but it does not replace the remaining Android hardware validation path.
+
+Current real-device status on Android is more specific than that: physical earbud delivery is now partially recognized on the RMX3990 stack, but still not reliable enough to call the tap workflow solved. The relay now preserves a bounded autonomy plan across spoken reports, can continue safe next steps on silence, and uses either a wake gesture or assistant long press to interrupt active implementation and capture a revised spoken plan.
 
 ## Safety Model
 

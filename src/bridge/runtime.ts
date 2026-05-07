@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { EarbudEvent, WorkspaceRegistry } from '../protocol/schemas';
+import type { EarbudEvent, JarvisResponse, WorkspaceRegistry } from '../protocol/schemas';
 import { loadWorkspaceRegistry } from '../policy/allowlists';
 import { AuditLog } from './audit-log';
 import { EventRouter } from './event-router';
@@ -22,6 +22,17 @@ export interface BridgeRuntimeOptions {
   openclaw?: OpenClawGatewayOptions;
 }
 
+function syncSessionResponse(sessionStore: SessionStore, sessionId: string, response: JarvisResponse): void {
+  sessionStore.setState(sessionId, response.nextState);
+
+  if (response.autonomy?.nextIntent != null && response.autonomy.continueAfterMs != null) {
+    sessionStore.setAutonomy(sessionId, response.autonomy);
+    return;
+  }
+
+  sessionStore.clearAutonomy(sessionId);
+}
+
 export class BridgeRuntime {
   constructor(
     readonly eventRouter: EventRouter,
@@ -42,6 +53,7 @@ export class BridgeRuntime {
       event,
       source: 'foreground',
     }) ?? response;
+    syncSessionResponse(this.sessionStore, event.sessionId, finalResponse);
     if (event.source !== 'android_relay') {
       await this.notifier.notify(finalResponse);
     }
@@ -67,12 +79,11 @@ export function createBridgeRuntime(options: BridgeRuntimeOptions = {}): BridgeR
       response,
       source: 'background',
     }) ?? response;
-    sessionStore.setState(sessionId, finalResponse.nextState);
+    syncSessionResponse(sessionStore, sessionId, finalResponse);
     if (sessionStore.getSource(sessionId) !== 'android_relay') {
       await notifier.notify(finalResponse);
     }
   });
   const eventRouter = new EventRouter(registry, sessionStore, auditLog, jarvisRuntime);
-
   return new BridgeRuntime(eventRouter, sessionStore, notifier, openclawClient);
 }

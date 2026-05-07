@@ -185,6 +185,10 @@ The Android relay implementation now includes the following verified behavior:
 - `STOP_RELAY` is validated through service-side confirmation and service disappearance checks
 - the UI exposes a hardware-verification card that distinguishes physical media-button wake, manual push-to-talk, and debug injection
 - the UI exposes speech-recognition readiness, TTS readiness, communication-route visibility, and a speaker self-test
+- the UI now exposes the active bounded-autonomy plan so the next reported step is visible while the relay waits for silence or interruption
+- successful background work can now return a bounded autonomy plan, allowing the relay to speak a completion report, continue on silence, or re-open listening when interrupted
+- a wake gesture during active implementation now interrupts the current flow instead of always being treated as a fresh wake event
+- assistant long press remains a fallback interrupt path while physical tap reliability is still device-dependent
 
 ### Installed-app emulator coverage
 
@@ -207,6 +211,8 @@ This emulator coverage validates the service-side wake path through a synthetic 
 
 - emulator-installed validation proves the Android service-side wake and approval lifecycle paths
 - manual Windows probe validation on the connected laptop observed a real `MEDIA_PLAY_PAUSE` event from the paired earbuds
+- the RMX3990 + realme Buds Air7 field path is now partially live: real earbud input is sometimes recognized by the Android relay, but the device pair still fails intermittently enough that the tap workflow remains only partially proven
+- the field note for this device pair is now tracked in `docs/10-rmx3990-buds-air7-field-notes.md` so the working recipe and current failure modes are preserved
 
 That means one physical earbud media-key path is now proven on Windows, but the decisive Android hardware validation still needs to be captured on a real device.
 

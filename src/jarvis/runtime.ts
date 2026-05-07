@@ -35,15 +35,15 @@ export class JarvisRuntime {
     private readonly notifyBackground?: (sessionId: string, response: JarvisResponse) => Promise<void> | void,
   ) {}
 
-  cancelBackgroundWork(sessionId: string): 'queued_cancelled' | 'running' | 'none' {
+  cancelBackgroundWork(sessionId: string): 'queued_cancelled' | 'running_cancelled' | 'none' {
     const outcome = this.backgroundCommandScheduler.cancel(sessionId);
+
+    if (outcome.cancelledRunning) {
+      return 'running_cancelled';
+    }
 
     if (outcome.cancelledQueued) {
       return 'queued_cancelled';
-    }
-
-    if (outcome.running) {
-      return 'running';
     }
 
     return 'none';
@@ -522,7 +522,7 @@ export class JarvisRuntime {
       },
       onComplete: async (result) => {
         const completedSuccessfully = result.exitCode === 0 && !result.timedOut;
-        const notification = buildBackgroundCommandCompletionResponse(result, activeActionId, copy);
+        const notification = buildBackgroundCommandCompletionResponse(result, activeActionId, copy, 'quick_status');
 
         this.auditLog.append({
           sessionId: request.sessionId,
@@ -630,8 +630,22 @@ function buildBackgroundCommandCompletionResponse(
   result: CommandResult,
   actionId: string | null,
   copy: BackgroundCommandCopy,
+  nextIntent: IntentName | null,
 ): JarvisResponse {
   const rawSummary = redactText(`${result.stdout}\n${result.stderr}`.trim()) ?? '';
+
+  if (result.cancelled) {
+    return {
+      speak: optimizeSpeak('Implementation paused. Tell me what to change.'),
+      display: rawSummary || 'The running task was cancelled before completion.',
+      requiresApproval: false,
+      approvalRequest: null,
+      actionId,
+      status: 'cancelled',
+      nextState: 'idle',
+      followUpHint: 'Share the changes to make',
+    };
+  }
 
   if (result.timedOut) {
     return {
@@ -648,14 +662,24 @@ function buildBackgroundCommandCompletionResponse(
 
   if (result.exitCode === 0) {
     return {
-      speak: optimizeSpeak(copy.successSpeak),
+      speak: optimizeSpeak(`${copy.successSpeak} Next I will refresh the repo status.`),
       display: rawSummary || 'The configured test command completed successfully.',
       requiresApproval: false,
       approvalRequest: null,
       actionId,
       status: 'completed',
       nextState: 'idle',
-      followUpHint: null,
+      followUpHint: 'Double tap to interrupt or stay silent to continue',
+      autonomy: nextIntent == null
+        ? null
+        : {
+            phase: 'report',
+            mode: 'continue_on_silence',
+            summary: copy.successSpeak,
+            nextStep: 'Refresh the repo status.',
+            continueAfterMs: 4000,
+            nextIntent,
+          },
     };
   }
 

@@ -6,7 +6,7 @@ export function resolveIntent(request: BridgeRequest): IntentName {
     return 'quick_status';
   }
 
-  if (request.event !== 'voice_command') {
+  if (request.event !== 'voice_command' && request.event !== 'autonomy_replan') {
     return 'quick_status';
   }
 

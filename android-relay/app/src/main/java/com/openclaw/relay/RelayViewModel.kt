@@ -71,6 +71,10 @@ class RelayViewModel : ViewModel() {
         ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_TEST_SPEAKER))
     }
 
+    fun tapTest(context: Context) {
+        ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_TAP_TEST))
+    }
+
     fun approve(context: Context) {
         ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_APPROVE))
     }

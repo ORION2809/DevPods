@@ -52,6 +52,7 @@ data class RelayUiState(
     val lastResponseStatus: String? = null,
     val pendingActionId: String? = null,
     val pendingApprovalSummary: String? = null,
+    val activeAutonomy: BridgeAutonomyInstruction? = null,
     val latency: RelayLatencySnapshot = RelayLatencySnapshot(),
     val lastSpeechError: String? = null,
     val lastTtsError: String? = null,
@@ -67,6 +68,16 @@ data class BridgeApprovalRequest(
 )
 
 @Serializable
+data class BridgeAutonomyInstruction(
+    val phase: String,
+    val mode: String,
+    val summary: String,
+    val nextStep: String? = null,
+    val continueAfterMs: Int? = null,
+    val nextIntent: String? = null,
+)
+
+@Serializable
 data class BridgeJarvisResponse(
     val speak: String,
     val display: String? = null,
@@ -76,6 +87,7 @@ data class BridgeJarvisResponse(
     val status: String,
     val nextState: String,
     val followUpHint: String? = null,
+    val autonomy: BridgeAutonomyInstruction? = null,
 )
 
 @Serializable

@@ -99,6 +99,35 @@ describe('process adapter', () => {
       const childPid = Number(result.stdout.trim());
 
       expect(result.timedOut).toBe(true);
+      expect(result.cancelled).toBe(false);
+      expect(task.pid).toBeTypeOf('number');
+      expect(childPid).toBeGreaterThan(0);
+      expect(isProcessAlive(task.pid as number)).toBe(false);
+      expect(isProcessAlive(childPid)).toBe(false);
+      expect(await waitForProcessExit(childPid, 5_000)).toBe(true);
+      expect(await waitForProcessExit(task.pid as number, 5_000)).toBe(true);
+    } finally {
+      fs.rmSync(path.dirname(scriptPath), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    }
+  });
+
+  it('kills the spawned child tree when a background command is explicitly cancelled', async () => {
+    const scriptPath = createParentChildProbeScript();
+
+    try {
+      const task = startBackgroundCommand(process.execPath, [scriptPath], {
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      });
+
+      await delay(100);
+      task.cancel();
+
+      const result = await task.completion;
+      const childPid = Number(result.stdout.trim());
+
+      expect(result.timedOut).toBe(false);
+      expect(result.cancelled).toBe(true);
       expect(task.pid).toBeTypeOf('number');
       expect(childPid).toBeGreaterThan(0);
       expect(isProcessAlive(task.pid as number)).toBe(false);

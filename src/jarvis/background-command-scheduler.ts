@@ -21,16 +21,21 @@ export interface ScheduledBackgroundCommand {
 
 export class BackgroundCommandScheduler {
   private readonly lanes = new Map<string, BackgroundCommandLane>();
+  private readonly runningTasks = new Map<string, BackgroundTask>();
+  private readonly cancelledRunningSessions = new Set<string>();
 
-  cancel(sessionId: string): { cancelledQueued: boolean; running: boolean } {
+  cancel(sessionId: string): { cancelledQueued: boolean; cancelledRunning: boolean } {
     let cancelledQueued = false;
-    let running = false;
+    let cancelledRunning = false;
+
+    const runningTask = this.runningTasks.get(sessionId);
+    if (runningTask) {
+      cancelledRunning = true;
+      this.cancelledRunningSessions.add(sessionId);
+      runningTask.cancel();
+    }
 
     for (const [workspaceId, lane] of this.lanes.entries()) {
-      if (lane.active?.sessionId === sessionId) {
-        running = true;
-      }
-
       const nextQueue = lane.queue.filter((entry) => entry.sessionId !== sessionId);
       if (nextQueue.length === lane.queue.length) {
         continue;
@@ -48,7 +53,7 @@ export class BackgroundCommandScheduler {
       });
     }
 
-    return { cancelledQueued, running };
+    return { cancelledQueued, cancelledRunning };
   }
 
   schedule(workspaceId: string, entry: BackgroundCommandQueueEntry): ScheduledBackgroundCommand {
@@ -107,16 +112,26 @@ export class BackgroundCommandScheduler {
       })
       : Promise.resolve();
 
+    this.runningTasks.set(entry.sessionId, task);
+
     void task.completion
       .then(async (result) => {
         await deferredStartNotification;
+        if (this.cancelledRunningSessions.has(entry.sessionId)) {
+          return;
+        }
         await entry.onComplete(result);
       })
       .catch(async (error) => {
         await deferredStartNotification;
+        if (this.cancelledRunningSessions.has(entry.sessionId)) {
+          return;
+        }
         await entry.onError(error);
       })
       .finally(() => {
+        this.runningTasks.delete(entry.sessionId);
+        this.cancelledRunningSessions.delete(entry.sessionId);
         this.advanceQueue(workspaceId, entry);
       });
 

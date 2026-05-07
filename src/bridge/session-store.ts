@@ -1,4 +1,4 @@
-import type { BridgeRequest } from '../protocol/schemas';
+import type { AutonomyInstruction, BridgeRequest } from '../protocol/schemas';
 import type { IntentName } from '../protocol/types';
 
 export interface PendingAction {
@@ -22,10 +22,16 @@ interface SessionSourceRecord {
   touchedAt: number;
 }
 
+interface SessionAutonomyRecord {
+  autonomy: AutonomyInstruction;
+  expiresAt: number;
+}
+
 export class SessionStore {
   private readonly states = new Map<string, SessionStateRecord>();
   private readonly sources = new Map<string, SessionSourceRecord>();
   private readonly pendingBySession = new Map<string, PendingAction>();
+  private readonly autonomyBySession = new Map<string, SessionAutonomyRecord>();
 
   constructor(private readonly ttlMs = 60 * 60 * 1000) {}
 
@@ -87,12 +93,47 @@ export class SessionStore {
     this.pendingBySession.delete(sessionId);
   }
 
+  setAutonomy(sessionId: string, autonomy: AutonomyInstruction): void {
+    this.prune();
+
+    if (autonomy.continueAfterMs == null || autonomy.nextIntent == null) {
+      this.autonomyBySession.delete(sessionId);
+      return;
+    }
+
+    this.autonomyBySession.set(sessionId, {
+      autonomy,
+      expiresAt: Date.now() + autonomy.continueAfterMs,
+    });
+  }
+
+  getAutonomy(sessionId: string): AutonomyInstruction | null {
+    this.prune();
+
+    const record = this.autonomyBySession.get(sessionId) ?? null;
+    if (!record) {
+      return null;
+    }
+
+    if (record.expiresAt < Date.now()) {
+      this.autonomyBySession.delete(sessionId);
+      return null;
+    }
+
+    return record.autonomy;
+  }
+
+  clearAutonomy(sessionId: string): void {
+    this.autonomyBySession.delete(sessionId);
+  }
+
   private prune(now = Date.now()): void {
     for (const [sessionId, record] of this.states.entries()) {
       if (now - record.touchedAt > this.ttlMs) {
         this.states.delete(sessionId);
         this.sources.delete(sessionId);
         this.pendingBySession.delete(sessionId);
+        this.autonomyBySession.delete(sessionId);
       }
     }
 
@@ -105,6 +146,12 @@ export class SessionStore {
     for (const [sessionId, pending] of this.pendingBySession.entries()) {
       if (pending.expiresAt.getTime() < now) {
         this.pendingBySession.delete(sessionId);
+      }
+    }
+
+    for (const [sessionId, autonomy] of this.autonomyBySession.entries()) {
+      if (autonomy.expiresAt < now) {
+        this.autonomyBySession.delete(sessionId);
       }
     }
   }

@@ -2,10 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import type { BackgroundTask, CommandResult } from '../src/adapters/process';
 import { BackgroundCommandScheduler } from '../src/jarvis/background-command-scheduler';
 
-function createBackgroundTask(completion: Promise<CommandResult>, pid = 100): BackgroundTask {
+function createBackgroundTask(
+  completion: Promise<CommandResult>,
+  pid = 100,
+  cancel = vi.fn(),
+): BackgroundTask {
   return {
     pid,
     completion,
+    cancel,
   };
 }
 
@@ -73,6 +78,7 @@ describe('background command scheduler', () => {
         stderr: '',
         exitCode: 0,
         timedOut: false,
+        cancelled: false,
       }), 303),
       onDeferredStart: deferredStart,
       onComplete: () => {
@@ -92,6 +98,68 @@ describe('background command scheduler', () => {
     await vi.waitFor(() => {
       expect(timeline).toEqual(['error-start', 'error-finish', 'next-start', 'next-complete']);
       expect(deferredStart).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('cancels a running task and releases the next queued task', async () => {
+    const scheduler = new BackgroundCommandScheduler();
+    const releaseFirstTask: { finish: () => void } = {
+      finish: () => {
+        throw new Error('Expected cancellation handler to be initialized.');
+      },
+    };
+    const firstCompletion = new Promise<CommandResult>((resolve) => {
+      releaseFirstTask.finish = () => {
+        resolve({
+          stdout: '',
+          stderr: '',
+          exitCode: null,
+          timedOut: false,
+          cancelled: true,
+        });
+      };
+    });
+    const cancelFirstTask = vi.fn(() => {
+      releaseFirstTask.finish();
+    });
+    const firstComplete = vi.fn();
+    const firstError = vi.fn();
+
+    scheduler.schedule('workspace_a', {
+      sessionId: 'session_running',
+      taskFactory: () => createBackgroundTask(firstCompletion, 101, cancelFirstTask),
+      onComplete: firstComplete,
+      onError: firstError,
+    });
+
+    const nextDeferredStart = vi.fn();
+    const nextComplete = vi.fn();
+    const secondTask = scheduler.schedule('workspace_a', {
+      sessionId: 'session_waiting',
+      taskFactory: () => createBackgroundTask(Promise.resolve({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+        cancelled: false,
+      }), 202),
+      onDeferredStart: nextDeferredStart,
+      onComplete: nextComplete,
+      onError: vi.fn(),
+    });
+
+    expect(secondTask.started).toBe(false);
+
+    const cancelled = scheduler.cancel('session_running');
+    expect(cancelled.cancelledRunning).toBe(true);
+    expect(cancelled.cancelledQueued).toBe(false);
+    expect(cancelFirstTask).toHaveBeenCalledTimes(1);
+
+    await vi.waitFor(() => {
+      expect(firstComplete).not.toHaveBeenCalled();
+      expect(firstError).not.toHaveBeenCalled();
+      expect(nextDeferredStart).toHaveBeenCalledTimes(1);
+      expect(nextComplete).toHaveBeenCalledTimes(1);
     });
   });
 });

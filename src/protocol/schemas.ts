@@ -3,6 +3,7 @@ import { intentNames } from './types';
 
 export const earbudEventNameSchema = z.enum([
   'triple_tap_right',
+  'tap_test_button',
   'left_long_press',
   'approve_right_double_tap',
   'reject_left_double_tap',
@@ -16,6 +17,8 @@ export const earbudEventNameSchema = z.enum([
   'android_approve',
   'android_reject',
   'android_cancel',
+  'android_autonomy_continue',
+  'android_autonomy_interrupt',
 ]);
 
 export const requestEventSchema = z.enum([
@@ -23,6 +26,8 @@ export const requestEventSchema = z.enum([
   'voice_command',
   'quick_status',
   'approval_action',
+  'autonomy_continue',
+  'autonomy_replan',
   'cancel',
   'pause',
   'resume',
@@ -115,6 +120,18 @@ export const approvalRequestSchema = z.object({
   expiresInMs: z.number().int().positive(),
 });
 
+export const autonomyPhaseSchema = z.enum(['report', 'plan', 'implementation']);
+export const autonomyModeSchema = z.enum(['continue_on_silence', 'awaiting_user_input']);
+
+export const autonomyInstructionSchema = z.object({
+  phase: autonomyPhaseSchema,
+  mode: autonomyModeSchema,
+  summary: z.string().min(1),
+  nextStep: z.string().nullable(),
+  continueAfterMs: z.number().int().positive().nullable(),
+  nextIntent: intentNameSchema.nullable(),
+});
+
 export const jarvisResponseSchema = z.object({
   speak: z.string().min(1),
   display: z.string().nullable(),
@@ -124,6 +141,7 @@ export const jarvisResponseSchema = z.object({
   status: responseStatusSchema,
   nextState: sessionStateSchema,
   followUpHint: z.string().nullable(),
+  autonomy: autonomyInstructionSchema.nullable().optional(),
 });
 
 export const workspaceCommandSchema = z.object({
@@ -180,3 +198,4 @@ export type WorkspaceRegistry = z.infer<typeof workspaceRegistrySchema>;
 export type RiskPolicy = z.infer<typeof riskPolicySchema>;
 export type AuditRecord = z.infer<typeof auditRecordSchema>;
 export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
+export type AutonomyInstruction = z.infer<typeof autonomyInstructionSchema>;

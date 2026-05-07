@@ -1,22 +1,31 @@
 package com.openclaw.relay
 
+import android.Manifest
+import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.core.app.ServiceCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.media.app.NotificationCompat as MediaAppNotificationCompat
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class RelayService : Service() {
+class RelayService : MediaSessionService() {
     companion object {
         private const val TAG = "OpenClawRelay"
 
@@ -28,7 +37,9 @@ class RelayService : Service() {
         const val ACTION_CHECK_HEALTH = "com.openclaw.relay.action.CHECK_HEALTH"
         const val ACTION_WAKE_AND_LISTEN = "com.openclaw.relay.action.WAKE_AND_LISTEN"
         const val ACTION_QUICK_STATUS = "com.openclaw.relay.action.QUICK_STATUS"
+        const val ACTION_ASSIST_LONG_PRESS = "com.openclaw.relay.action.ASSIST_LONG_PRESS"
         const val ACTION_TEST_SPEAKER = "com.openclaw.relay.action.TEST_SPEAKER"
+        const val ACTION_TAP_TEST = "com.openclaw.relay.action.TAP_TEST"
         const val ACTION_APPROVE = "com.openclaw.relay.action.APPROVE"
         const val ACTION_REJECT = "com.openclaw.relay.action.REJECT"
         const val ACTION_CANCEL = "com.openclaw.relay.action.CANCEL"
@@ -44,12 +55,14 @@ class RelayService : Service() {
         const val EXTRA_PENDING_ACTION_ID = "pendingActionId"
 
         fun intent(context: Context, action: String): Intent {
-            return Intent(context, RelayService::class.java).setAction(action)
+            return buildRelayServiceIntent(context, action)
         }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val autonomyHandler = Handler(Looper.getMainLooper())
     private val bridgeClient = BridgeClient()
+    private var pendingAutonomyContinuation: Runnable? = null
 
     private lateinit var speechRecognizer: AndroidSpeechRecognizer
     private lateinit var ttsSpeaker: AndroidTtsSpeaker
@@ -70,32 +83,49 @@ class RelayService : Service() {
         audioRouter = BluetoothAudioRouter(this)
         RelayStateStore.setAudioRoute(audioRouter.snapshot())
         mediaSessionController = RelayMediaSessionController(this) {
-            RelayStateStore.setWakeSignal(it)
-            beginListening(it)
+            handleGestureSignal(it)
         }
+        mediaSessionController.session().setSessionActivity(buildMainActivityPendingIntent())
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startRelayForeground(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         RelayStateStore.markServiceRunning(true)
         checkBridgeHealth()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!hasValidRelayCommandToken(this, intent)) {
+            RelayStateStore.setError("Rejected an unauthorized relay command.")
+            Log.w(TAG, "unauthorized relay command action=${intent?.action ?: "none"}")
+            return START_NOT_STICKY
+        }
+
         applyIntentConfig(intent)
         Log.i(
             TAG,
             "service onStartCommand action=${intent?.action ?: ACTION_START_RELAY} event=${intent?.getStringExtra(EXTRA_EVENT_NAME) ?: "none"}",
         )
+        val serviceAction = intent?.action ?: ACTION_START_RELAY
+        if (shouldRefreshAudioRoute(serviceAction)) {
+            RelayStateStore.setAudioRoute(audioRouter.snapshot())
+        }
 
-        when (intent?.action ?: ACTION_START_RELAY) {
+        when (serviceAction) {
             ACTION_START_RELAY -> {
+                cancelPendingAutonomyContinuation()
                 RelayStateStore.setAudioRoute(audioRouter.snapshot())
                 checkBridgeHealth()
             }
-            ACTION_STOP_RELAY -> stopSelf()
-            ACTION_CHECK_HEALTH -> checkBridgeHealth()
-            ACTION_WAKE_AND_LISTEN -> beginListening(
+            ACTION_STOP_RELAY -> {
+                cancelPendingAutonomyContinuation()
+                stopSelf()
+            }
+            ACTION_CHECK_HEALTH -> {
+                cancelPendingAutonomyContinuation()
+                checkBridgeHealth()
+            }
+            ACTION_WAKE_AND_LISTEN -> handleGestureSignal(
                 RelayWakeSignal(
-                    trigger = intent?.getStringExtra(EXTRA_TRIGGER) ?: "android_push_to_talk",
+                    trigger = intent?.getStringExtra(EXTRA_TRIGGER)?.takeIf { value -> value.isNotBlank() } ?: "android_push_to_talk",
                     source = "manual_push_to_talk",
                     sourceLabel = "Push-to-talk button",
                 ),
@@ -110,6 +140,10 @@ class RelayService : Service() {
                 ),
             )
 
+            ACTION_ASSIST_LONG_PRESS -> handleAssistantLongPress(
+                sourceAction = intent?.getStringExtra(EXTRA_TRIGGER),
+            )
+
             ACTION_TEST_SPEAKER -> {
                 if (!RelayStateStore.state.value.ttsReady) {
                     RelayStateStore.recordTtsError("Text-to-speech is still initializing. Please wait before running the speaker test.")
@@ -120,23 +154,29 @@ class RelayService : Service() {
                 ttsSpeaker.speak("DevPods Relay is ready.")
             }
 
-            ACTION_APPROVE -> sendApprovalEvent("android_approve", intent?.getStringExtra(EXTRA_PENDING_ACTION_ID))
-            ACTION_REJECT -> sendApprovalEvent("android_reject", intent?.getStringExtra(EXTRA_PENDING_ACTION_ID))
-            ACTION_CANCEL -> sendApprovalEvent("android_cancel", intent?.getStringExtra(EXTRA_PENDING_ACTION_ID))
+            ACTION_TAP_TEST -> runTapTest()
+
+            ACTION_APPROVE -> sendApprovalEvent("android_approve")
+            ACTION_REJECT -> sendApprovalEvent("android_reject")
+            ACTION_CANCEL -> sendApprovalEvent("android_cancel")
             ACTION_DEBUG_EVENT -> handleDebugEvent(intent)
         }
 
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession {
+        return mediaSessionController.session()
+    }
 
     override fun onDestroy() {
+        cancelPendingAutonomyContinuation()
         RelayStateStore.markServiceRunning(false)
         RelayStateStore.markListening(false)
         RelayStateStore.markAwaitingBridgeResponse(false)
         RelayStateStore.markSpeaking(false)
         RelayStateStore.clearPendingAction()
+        RelayStateStore.clearAutonomy()
         speechRecognizer.destroy()
         ttsSpeaker.close()
         audioRouter.clear()
@@ -163,21 +203,36 @@ class RelayService : Service() {
         }
     }
 
-    private fun beginListening(wakeSignal: RelayWakeSignal) {
+    private fun handleGestureSignal(wakeSignal: RelayWakeSignal) {
         RelayStateStore.setWakeSignal(wakeSignal)
-        RelayStateStore.markListening(true)
         RelayStateStore.markAwaitingBridgeResponse(false)
         RelayStateStore.setPartialTranscript("")
         RelayStateStore.setError("")
 
-        if (RelayStateStore.state.value.config.useBluetoothRouting) {
-            val routeSnapshot = audioRouter.routeCommunicationAudio()
-            RelayStateStore.setAudioRoute(routeSnapshot)
-            if (!routeSnapshot.isActive) {
-                RelayStateStore.recordSpeechError("Bluetooth routing failed. Check the connected audio device.")
-                return
-            }
+        if (shouldInterruptImplementation(RelayStateStore.state.value, wakeSignal.trigger)) {
+            interruptImplementationAndListen()
+            return
         }
+
+        if (!shouldOpenListeningWindow(wakeSignal.trigger)) {
+            sendBridgeEvent(buildGestureBridgeEvent(wakeSignal))
+            return
+        }
+
+        if (!prepareListeningRoute()) {
+            return
+        }
+
+        sendBridgeEvent(
+            event = buildGestureBridgeEvent(wakeSignal),
+            onSpeechComplete = { startListeningSession(wakeSignal) },
+        )
+    }
+
+    private fun startListeningSession(wakeSignal: RelayWakeSignal) {
+        RelayStateStore.markListening(true)
+        RelayStateStore.markAwaitingBridgeResponse(false)
+        RelayStateStore.setPartialTranscript("")
 
         speechRecognizer.startListening(
             onPartialTranscript = { partial -> RelayStateStore.setPartialTranscript(partial) },
@@ -200,9 +255,181 @@ class RelayService : Service() {
         )
     }
 
-    private fun sendApprovalEvent(eventName: String, explicitPendingActionId: String?) {
+    private fun startAutonomyInterruptListeningSession() {
+        RelayStateStore.markListening(true)
+        RelayStateStore.markAwaitingBridgeResponse(false)
+        RelayStateStore.setPartialTranscript("")
+
+        speechRecognizer.startListening(
+            onPartialTranscript = { partial -> RelayStateStore.setPartialTranscript(partial) },
+            onFinalTranscript = { transcript ->
+                RelayStateStore.markListening(false)
+                RelayStateStore.setTranscript(transcript)
+                sendBridgeEvent(
+                    RelayBridgeEvent(
+                        sessionId = RelayStateStore.state.value.config.sessionId,
+                        workspace = RelayStateStore.state.value.config.workspace,
+                        event = "android_autonomy_interrupt",
+                        timestamp = System.currentTimeMillis(),
+                        utterance = transcript,
+                    ),
+                )
+            },
+            onError = { error ->
+                RelayStateStore.recordSpeechError(error)
+            },
+        )
+    }
+
+    private fun interruptImplementationAndListen() {
+        cancelPendingAutonomyContinuation()
+        speechRecognizer.stopListening()
+        ttsSpeaker.stop()
+
+        if (!prepareListeningRoute()) {
+            return
+        }
+
         val currentState = RelayStateStore.state.value
-        val pendingActionId = explicitPendingActionId ?: currentState.pendingActionId
+        val isRunningOrQueued = currentState.pendingActionId != null && currentState.pendingApprovalSummary == null
+        if (isRunningOrQueued) {
+            sendBridgeEvent(
+                RelayBridgeEvent(
+                    sessionId = currentState.config.sessionId,
+                    workspace = currentState.config.workspace,
+                    event = "android_cancel",
+                    timestamp = System.currentTimeMillis(),
+                    pendingActionId = currentState.pendingActionId,
+                ),
+                onSpeechComplete = { startAutonomyInterruptListeningSession() },
+            )
+            return
+        }
+
+        RelayStateStore.clearAutonomy()
+        RelayStateStore.markSpeechStarted(System.currentTimeMillis())
+        ttsSpeaker.speak("Implementation paused. Tell me what to change.") {
+            startAutonomyInterruptListeningSession()
+        }
+    }
+
+    private fun prepareListeningRoute(): Boolean {
+        maybePromoteForegroundForListening()
+
+        if (!RelayStateStore.state.value.config.useBluetoothRouting) {
+            return true
+        }
+
+        val routeSnapshot = audioRouter.routeCommunicationAudio()
+        RelayStateStore.setAudioRoute(routeSnapshot)
+        if (!routeSnapshot.isActive) {
+            RelayStateStore.recordSpeechError("Bluetooth routing failed. Check the connected audio device.")
+            return false
+        }
+
+        return true
+    }
+
+    private fun buildGestureBridgeEvent(wakeSignal: RelayWakeSignal): RelayBridgeEvent {
+        val currentConfig = RelayStateStore.state.value.config
+        return RelayBridgeEvent(
+            sessionId = currentConfig.sessionId,
+            workspace = currentConfig.workspace,
+            event = wakeSignal.trigger,
+            timestamp = System.currentTimeMillis(),
+            pendingActionId = RelayStateStore.state.value.pendingActionId,
+        )
+    }
+
+    private fun maybePromoteForegroundForListening() {
+        if (!speechRecognizer.isRecognitionAvailable()) {
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+
+        startRelayForeground(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+        )
+    }
+
+    private fun startRelayForeground(foregroundServiceType: Int) {
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            buildNotification(),
+            foregroundServiceType,
+        )
+    }
+
+    private fun runTapTest() {
+        cancelPendingAutonomyContinuation()
+        val currentConfig = RelayStateStore.state.value.config
+        RelayStateStore.setWakeSignal(RelayTapTestFactory.createWakeSignal())
+        sendBridgeEvent(
+            RelayBridgeEvent(
+                sessionId = currentConfig.sessionId,
+                workspace = currentConfig.workspace,
+                event = RelayTapTestFactory.EVENT_NAME,
+                timestamp = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    private fun shouldRefreshAudioRoute(action: String): Boolean {
+        return action in setOf(
+            ACTION_START_RELAY,
+            ACTION_CHECK_HEALTH,
+            ACTION_QUICK_STATUS,
+            ACTION_ASSIST_LONG_PRESS,
+            ACTION_WAKE_AND_LISTEN,
+            ACTION_TEST_SPEAKER,
+            ACTION_TAP_TEST,
+        )
+    }
+
+    private fun handleAssistantLongPress(sourceAction: String?) {
+        val currentState = RelayStateStore.state.value
+        val hasBackgroundImplementation = currentState.pendingActionId != null && currentState.pendingApprovalSummary == null
+        if (hasBackgroundImplementation || currentState.activeAutonomy != null) {
+            RelayStateStore.setWakeSignal(
+                RelayWakeSignal(
+                    trigger = "android_autonomy_interrupt",
+                    source = sourceAction ?: ACTION_VOICE_ASSIST,
+                    sourceLabel = "Assistant long press",
+                ),
+            )
+            interruptImplementationAndListen()
+            return
+        }
+
+        cancelPendingAutonomyContinuation()
+        val currentConfig = currentState.config
+        RelayStateStore.setWakeSignal(
+            RelayWakeSignal(
+                trigger = "left_long_press",
+                source = sourceAction ?: ACTION_VOICE_ASSIST,
+                sourceLabel = "Assistant long press",
+            ),
+        )
+        RelayStateStore.markAwaitingBridgeResponse(false)
+        RelayStateStore.setError("")
+        sendBridgeEvent(
+            RelayBridgeEvent(
+                sessionId = currentConfig.sessionId,
+                workspace = currentConfig.workspace,
+                event = "left_long_press",
+                timestamp = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    private fun sendApprovalEvent(eventName: String) {
+        cancelPendingAutonomyContinuation()
+        val currentState = RelayStateStore.state.value
+        val pendingActionId = currentState.pendingActionId
         if (pendingActionId.isNullOrBlank()) {
             RelayStateStore.setError("No pending approval is available.")
             Log.w(TAG, "approval skipped: no pending action for event=$eventName")
@@ -221,6 +448,17 @@ class RelayService : Service() {
     }
 
     private fun sendBridgeEvent(event: RelayBridgeEvent) {
+        sendBridgeEvent(event, onSpeechComplete = null)
+    }
+
+    private fun sendBridgeEvent(
+        event: RelayBridgeEvent,
+        onSpeechComplete: (() -> Unit)? = null,
+    ) {
+        if (event.event != "android_autonomy_continue") {
+            cancelPendingAutonomyContinuation()
+        }
+
         val config = RelayStateStore.state.value.config
         RelayStateStore.markAwaitingBridgeResponse(true)
         serviceScope.launch {
@@ -230,9 +468,22 @@ class RelayService : Service() {
                     if (result.value.actionId == null && !result.value.requiresApproval) {
                         RelayStateStore.clearPendingAction()
                     }
+                    if (!shouldScheduleAutonomyContinue(result.value.autonomy)) {
+                        RelayStateStore.clearAutonomy()
+                    }
                     if (result.value.speak.isNotBlank()) {
                         RelayStateStore.markSpeechStarted(System.currentTimeMillis())
-                        ttsSpeaker.speak(result.value.speak)
+                        ttsSpeaker.speak(result.value.speak) {
+                            onSpeechComplete?.invoke()
+                            if (onSpeechComplete == null) {
+                                scheduleAutonomyContinuation(result.value)
+                            }
+                        }
+                    } else {
+                        onSpeechComplete?.invoke()
+                        if (onSpeechComplete == null) {
+                            scheduleAutonomyContinuation(result.value)
+                        }
                     }
                     Log.i(
                         TAG,
@@ -247,8 +498,37 @@ class RelayService : Service() {
         }
     }
 
+    private fun scheduleAutonomyContinuation(response: BridgeJarvisResponse) {
+        val autonomy = response.autonomy
+        if (!shouldScheduleAutonomyContinue(autonomy)) {
+            return
+        }
+
+        cancelPendingAutonomyContinuation()
+        val continueAfterMs = autonomy?.continueAfterMs ?: return
+        val currentConfig = RelayStateStore.state.value.config
+        val runnable = Runnable {
+            pendingAutonomyContinuation = null
+            sendBridgeEvent(
+                RelayBridgeEvent(
+                    sessionId = currentConfig.sessionId,
+                    workspace = currentConfig.workspace,
+                    event = "android_autonomy_continue",
+                    timestamp = System.currentTimeMillis(),
+                ),
+            )
+        }
+        pendingAutonomyContinuation = runnable
+        autonomyHandler.postDelayed(runnable, continueAfterMs.toLong())
+    }
+
+    private fun cancelPendingAutonomyContinuation() {
+        pendingAutonomyContinuation?.let { autonomyHandler.removeCallbacks(it) }
+        pendingAutonomyContinuation = null
+    }
+
     private fun applyIntentConfig(intent: Intent?) {
-        if (intent == null) {
+        if (intent == null || (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
             return
         }
 
@@ -303,8 +583,14 @@ class RelayService : Service() {
     private fun buildNotification() = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
         .setContentTitle(getString(R.string.relay_notification_title))
         .setContentText(getString(R.string.relay_notification_body))
+        .setContentIntent(buildMainActivityPendingIntent())
         .setSmallIcon(android.R.drawable.stat_sys_headset)
+        .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
         .setOngoing(true)
+        .setStyle(
+            MediaAppNotificationCompat.MediaStyle()
+                .setMediaSession(mediaSessionController.session().sessionCompatToken),
+        )
         .also {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
@@ -317,5 +603,17 @@ class RelayService : Service() {
             }
         }
         .build()
+
+    private fun buildMainActivityPendingIntent(): PendingIntent {
+        val activityIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            this,
+            0,
+            activityIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 
 }

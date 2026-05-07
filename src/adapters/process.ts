@@ -10,11 +10,13 @@ export interface CommandResult {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  cancelled: boolean;
 }
 
 export interface BackgroundTask {
   pid: number | undefined;
   completion: Promise<CommandResult>;
+  cancel: () => void;
 }
 
 interface OutputAccumulator {
@@ -61,6 +63,7 @@ export function runCommandCapture(
         stderr: 'Process output streams were unavailable.',
         exitCode: null,
         timedOut: false,
+          cancelled: false,
       });
       return;
     }
@@ -76,21 +79,21 @@ export function runCommandCapture(
     child.on('error', (error) => {
       clearTimeout(timer);
       if (timedOut) {
-        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true });
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true, cancelled: false });
         return;
       }
 
-      finish({ stdout: stdout.value, stderr: error.message, exitCode: null, timedOut: false });
+      finish({ stdout: stdout.value, stderr: error.message, exitCode: null, timedOut: false, cancelled: false });
     });
 
     child.on('close', (exitCode) => {
       clearTimeout(timer);
       if (timedOut) {
-        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true });
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true, cancelled: false });
         return;
       }
 
-      finish({ stdout: stdout.value, stderr: stderr.value, exitCode, timedOut: false });
+      finish({ stdout: stdout.value, stderr: stderr.value, exitCode, timedOut: false, cancelled: false });
     });
   });
 }
@@ -102,6 +105,7 @@ export function startBackgroundCommand(
 ): BackgroundTask {
   const timeoutMs = options.timeoutMs ?? DEFAULT_BACKGROUND_TIMEOUT_MS;
   const child = spawn(command, args, buildSpawnOptions(options));
+  let cancelled = false;
 
   const completion = new Promise<CommandResult>((resolve) => {
     const stdout = createOutputAccumulator();
@@ -132,6 +136,7 @@ export function startBackgroundCommand(
         stderr: 'Process output streams were unavailable.',
         exitCode: null,
         timedOut: false,
+          cancelled: false,
       });
       return;
     }
@@ -146,28 +151,46 @@ export function startBackgroundCommand(
 
     child.on('error', (error) => {
       clearTimeout(timer);
-      if (timedOut) {
-        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true });
+      if (cancelled) {
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Cancelled.', exitCode: null, timedOut: false, cancelled: true });
         return;
       }
 
-      finish({ stdout: stdout.value, stderr: error.message, exitCode: null, timedOut: false });
+      if (timedOut) {
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true, cancelled: false });
+        return;
+      }
+
+      finish({ stdout: stdout.value, stderr: error.message, exitCode: null, timedOut: false, cancelled: false });
     });
 
     child.on('close', (exitCode) => {
       clearTimeout(timer);
-      if (timedOut) {
-        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true });
+      if (cancelled) {
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Cancelled.', exitCode: null, timedOut: false, cancelled: true });
         return;
       }
 
-      finish({ stdout: stdout.value, stderr: stderr.value, exitCode, timedOut: false });
+      if (timedOut) {
+        finish({ stdout: stdout.value, stderr: stderr.value || 'Timed out.', exitCode: null, timedOut: true, cancelled: false });
+        return;
+      }
+
+      finish({ stdout: stdout.value, stderr: stderr.value, exitCode, timedOut: false, cancelled: false });
     });
   });
 
   return {
     pid: child.pid,
     completion,
+    cancel: () => {
+      if (cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      terminateProcessTree(child);
+    },
   };
 }
 

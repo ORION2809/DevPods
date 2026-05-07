@@ -30,6 +30,21 @@ describe('protocol schemas', () => {
     expect(parsed.event).toBe('headset_button_single');
   });
 
+  it('validates an android relay tap test event fixture', () => {
+    const parsed = earbudEventSchema.parse({
+      source: 'android_relay',
+      sessionId: 'android_tap_test',
+      workspace: 'current_repo',
+      device: 'both_buds',
+      event: 'tap_test_button',
+      timestamp: Date.now(),
+      profile: 'default',
+    });
+
+    expect(parsed.source).toBe('android_relay');
+    expect(parsed.event).toBe('tap_test_button');
+  });
+
   it('validates a bridge request', () => {
     const parsed = bridgeRequestSchema.parse({
       source: 'developer_earbuds_simulator',
@@ -87,5 +102,50 @@ describe('protocol schemas', () => {
     });
 
     expect(parsed.nextState).toBe('queued');
+  });
+
+  it('validates a Jarvis response with autonomy instructions', () => {
+    const parsed = jarvisResponseSchema.parse({
+      speak: 'Tests finished successfully. Next I will refresh the repo status.',
+      display: 'Tests finished successfully. Next step: refresh the repo status.',
+      requiresApproval: false,
+      approvalRequest: null,
+      actionId: 'action_456',
+      status: 'completed',
+      nextState: 'idle',
+      followUpHint: 'Double tap to interrupt or stay silent to continue',
+      autonomy: {
+        phase: 'report',
+        mode: 'continue_on_silence',
+        summary: 'Tests finished successfully.',
+        nextStep: 'Refresh the repo status.',
+        continueAfterMs: 4000,
+        nextIntent: 'quick_status',
+      },
+    });
+
+    expect(parsed.autonomy?.nextIntent).toBe('quick_status');
+    expect(parsed.autonomy?.continueAfterMs).toBe(4000);
+  });
+
+  it('rejects an invalid autonomy mode', () => {
+    expect(() => jarvisResponseSchema.parse({
+      speak: 'Plan updated.',
+      display: 'Plan updated.',
+      requiresApproval: false,
+      approvalRequest: null,
+      actionId: null,
+      status: 'acknowledged',
+      nextState: 'idle',
+      followUpHint: null,
+      autonomy: {
+        phase: 'plan',
+        mode: 'invalid_mode',
+        summary: 'Plan updated.',
+        nextStep: 'Run workspace tests.',
+        continueAfterMs: 4000,
+        nextIntent: 'run_tests',
+      },
+    })).toThrow();
   });
 });

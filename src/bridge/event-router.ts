@@ -71,20 +71,22 @@ export class EventRouter {
       case 'cancel':
         const backgroundCancelOutcome = this.jarvisRuntime.cancelBackgroundWork(request.sessionId);
         this.sessionStore.clearPending(request.sessionId);
-        if (backgroundCancelOutcome === 'running') {
-          this.sessionStore.setState(request.sessionId, 'running');
+        if (backgroundCancelOutcome === 'running_cancelled') {
+          this.sessionStore.clearAutonomy(request.sessionId);
+          this.sessionStore.setState(request.sessionId, 'idle');
           return this.respond(request, workspace.id, {
-            speak: 'Task is already running and cannot be cancelled.',
-            display: 'The approved background task has already started and will finish on its own.',
+            speak: 'Implementation paused. Tell me what to change.',
+            display: 'The running background task was cancelled before completion.',
             requiresApproval: false,
             approvalRequest: null,
             actionId: null,
-            status: 'blocked',
-            nextState: 'running',
-            followUpHint: 'Wait for completion notification',
-          }, 'blocked');
+            status: 'cancelled',
+            nextState: 'idle',
+            followUpHint: 'Describe the change to make',
+          }, 'cancelled');
         }
 
+        this.sessionStore.clearAutonomy(request.sessionId);
         this.sessionStore.setState(request.sessionId, 'idle');
         return this.respond(request, workspace.id, {
           speak: 'Command cancelled.',
@@ -100,6 +102,10 @@ export class EventRouter {
         }, 'cancelled');
       case 'approval_action':
         return this.handleApproval(request, workspace.id);
+      case 'autonomy_continue':
+        return this.handleAutonomyContinue(request, workspace);
+      case 'autonomy_replan':
+        return this.handleAutonomyReplan(request, workspace);
       case 'quick_status':
       case 'voice_command':
         return this.handleIntentRequest(request, workspace);
@@ -111,9 +117,18 @@ export class EventRouter {
     workspace: ReturnType<typeof resolveWorkspace>,
   ): Promise<JarvisResponse> {
     const intent = resolveIntent(request);
+    return this.handleResolvedIntent(request, workspace, intent);
+  }
+
+  private async handleResolvedIntent(
+    request: ReturnType<typeof buildBridgeRequest>,
+    workspace: ReturnType<typeof resolveWorkspace>,
+    intent: IntentName,
+  ): Promise<JarvisResponse> {
     const decision = evaluateIntentPolicy(intent, workspace);
 
     if (!decision.allowed) {
+      this.sessionStore.clearAutonomy(request.sessionId);
       this.sessionStore.setState(request.sessionId, 'idle');
       return this.respond(request, workspace.id, {
         speak: 'That action is blocked in this workspace.',
@@ -128,6 +143,7 @@ export class EventRouter {
     }
 
     if (decision.riskClass === 'approval_required' || decision.riskClass === 'hard_approval') {
+      this.sessionStore.clearAutonomy(request.sessionId);
       const actionId = createActionId();
       const expiresAt = new Date(Date.now() + request.riskPolicy.approvalTimeoutMs);
       const isHardApproval = decision.riskClass === 'hard_approval';
@@ -159,10 +175,96 @@ export class EventRouter {
       }, 'approval_requested');
     }
 
+    this.sessionStore.clearAutonomy(request.sessionId);
     this.sessionStore.setState(request.sessionId, 'thinking');
     const response = await this.jarvisRuntime.executeIntent(intent, request, workspace);
     this.sessionStore.setState(request.sessionId, response.nextState);
     return this.respond(request, workspace.id, response, 'completed');
+  }
+
+  private async handleAutonomyContinue(
+    request: ReturnType<typeof buildBridgeRequest>,
+    workspace: ReturnType<typeof resolveWorkspace>,
+  ): Promise<JarvisResponse> {
+    const autonomy = this.sessionStore.getAutonomy(request.sessionId);
+    if (!autonomy?.nextIntent) {
+      this.sessionStore.setState(request.sessionId, 'idle');
+      return this.respond(request, workspace.id, {
+        speak: 'No active implementation plan is waiting to continue.',
+        display: 'The relay did not have a queued autonomy step for this session.',
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'blocked',
+        nextState: 'idle',
+        followUpHint: null,
+      }, 'blocked');
+    }
+
+    this.sessionStore.clearAutonomy(request.sessionId);
+    return this.handleResolvedIntent(request, workspace, autonomy.nextIntent);
+  }
+
+  private async handleAutonomyReplan(
+    request: ReturnType<typeof buildBridgeRequest>,
+    workspace: ReturnType<typeof resolveWorkspace>,
+  ): Promise<JarvisResponse> {
+    if (!request.utterance) {
+      this.sessionStore.clearAutonomy(request.sessionId);
+      this.sessionStore.setState(request.sessionId, 'idle');
+      return this.respond(request, workspace.id, {
+        speak: 'I did not hear the updated plan.',
+        display: 'Autonomy replan requires a spoken instruction.',
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'blocked',
+        nextState: 'idle',
+        followUpHint: null,
+      }, 'blocked');
+    }
+
+    const intent = resolveIntent({
+      ...request,
+      event: 'voice_command',
+    });
+    const decision = evaluateIntentPolicy(intent, workspace);
+    if (!decision.allowed) {
+      this.sessionStore.clearAutonomy(request.sessionId);
+      this.sessionStore.setState(request.sessionId, 'idle');
+      return this.respond(request, workspace.id, {
+        speak: 'That updated plan is blocked in this workspace.',
+        display: decision.reason ?? 'Policy denied the requested plan update.',
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'blocked',
+        nextState: 'idle',
+        followUpHint: null,
+      }, 'blocked');
+    }
+
+    const summary = 'Plan updated from your request.';
+    const nextStep = describeIntent(intent);
+    this.sessionStore.setState(request.sessionId, 'idle');
+    return this.respond(request, workspace.id, {
+      speak: `Plan updated. Next I will ${nextStep.toLowerCase()}. Double tap to change it or stay silent to continue.`,
+      display: `Plan updated. Next step: ${nextStep}.`,
+      requiresApproval: false,
+      approvalRequest: null,
+      actionId: null,
+      status: 'acknowledged',
+      nextState: 'idle',
+      followUpHint: 'Double tap to change it or stay silent to continue',
+      autonomy: {
+        phase: 'plan',
+        mode: 'continue_on_silence',
+        summary,
+        nextStep,
+        continueAfterMs: 4000,
+        nextIntent: intent,
+      },
+    }, 'allowed');
   }
 
   private async handleApproval(

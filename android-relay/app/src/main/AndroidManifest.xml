@@ -29,11 +29,31 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AssistantEntryActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <action android:name="android.intent.action.VOICE_ASSIST" />
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".RelayService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="microphone|mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="microphone|mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

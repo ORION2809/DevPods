@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                     onQuickStatus = { relayViewModel.quickStatus(context) },
                     onWakeAndListen = { relayViewModel.wakeAndListen(context) },
                     onTestSpeaker = { relayViewModel.testSpeaker(context) },
+                    onTapTest = { relayViewModel.tapTest(context) },
                     onApprove = { relayViewModel.approve(context) },
                     onReject = { relayViewModel.reject(context) },
                     onCancel = { relayViewModel.cancel(context) },
@@ -153,6 +154,7 @@ private fun RelayScreen(
     onQuickStatus: () -> Unit,
     onWakeAndListen: () -> Unit,
     onTestSpeaker: () -> Unit,
+    onTapTest: () -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onCancel: () -> Unit,
@@ -210,6 +212,9 @@ private fun RelayScreen(
                 Button(onClick = onTestSpeaker, modifier = Modifier.weight(1f)) {
                     Text("Speaker Test")
                 }
+                Button(onClick = onTapTest, modifier = Modifier.weight(1f)) {
+                    Text("Tap Test")
+                }
                 Button(
                     onClick = { showAdvancedSettings = !showAdvancedSettings },
                     modifier = Modifier.weight(1f),
@@ -263,10 +268,10 @@ private fun RelayScreen(
             Text("Controller package: ${wakeSignal?.controllerPackage ?: "unknown"}")
             Text("Observed at: ${formatTimestamp(context, wakeSignal?.receivedAtMs)}")
             Text(
-                if (wakeSignal?.source == "physical_media_button") {
-                    "Physical headset media-button delivery has been observed on this device."
-                } else {
-                    "Physical headset wake is not verified yet. Use a real earbud press to confirm this path."
+                when (wakeSignal?.source) {
+                    "physical_media_button" -> "Physical headset media-button delivery has been observed on this device."
+                    "manual_tap_test" -> "Tap Test reached the relay path. Use a real earbud press to verify actual hardware delivery."
+                    else -> "Physical headset wake is not verified yet. Use Tap Test for UI and log validation, or a real earbud press to confirm hardware delivery."
                 },
             )
         }
@@ -296,6 +301,15 @@ private fun RelayScreen(
             Text("Thinking: ${state.isAwaitingBridgeResponse}")
             Text("Speaking: ${state.isSpeaking}")
             Text("Last headset event: ${state.lastHeadsetEvent ?: "none"}")
+        }
+
+        RelayStatusCard(title = "Autonomy") {
+            val autonomy = state.activeAutonomy
+            Text("Phase: ${autonomy?.phase ?: "none"}")
+            Text("Mode: ${autonomy?.mode ?: "none"}")
+            Text("Summary: ${autonomy?.summary ?: "none"}")
+            Text("Next step: ${autonomy?.nextStep ?: "none"}")
+            Text("Continue after: ${autonomy?.continueAfterMs?.toString() ?: "-"} ms")
         }
 
         RelayStatusCard(title = "Latest Interaction") {

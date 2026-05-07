@@ -33,6 +33,7 @@ object RelayStateStore {
                     isSpeaking = false,
                     pendingActionId = null,
                     pendingApprovalSummary = null,
+                    activeAutonomy = null,
                     errorMessage = null,
                     lastSpeechError = null,
                     lastTtsError = null,
@@ -125,6 +126,9 @@ object RelayStateStore {
                 pendingApprovalSummary = response.approvalRequest?.summary?.takeIf {
                     response.requiresApproval || response.nextState == "approval_pending"
                 },
+                activeAutonomy = response.autonomy?.takeIf {
+                    it.mode == "continue_on_silence" && it.continueAfterMs != null && !it.nextIntent.isNullOrBlank()
+                },
                 latency = it.latency.copy(lastBridgeCommandMs = durationMs),
                 errorMessage = null,
             )
@@ -137,6 +141,10 @@ object RelayStateStore {
 
     fun clearPendingAction() {
         mutableState.update { it.copy(pendingActionId = null, pendingApprovalSummary = null) }
+    }
+
+    fun clearAutonomy() {
+        mutableState.update { it.copy(activeAutonomy = null) }
     }
 
     fun recordSpeechError(message: String) {
