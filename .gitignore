@@ -21,4 +21,11 @@ keystore.properties
 .env.local
 .env.*.local
 suggestions.md
+.claude-flow/
+.kimi/
+docs.zip
+android-relay/*.png
+android-relay/lint-output.txt
+external/
+vendor-sources/
 
