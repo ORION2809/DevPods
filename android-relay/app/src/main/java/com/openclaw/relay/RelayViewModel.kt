@@ -451,42 +451,46 @@ class RelayViewModel(
                 }
             }
 
-            val probeResults = registry.probeAll()
-            val librePodsResult = probeResults["librepods_airpods"]
+            try {
+                val probeResults = registry.probeAll()
+                val librePodsResult = probeResults["librepods_airpods"]
 
-            kotlinx.coroutines.delay(8_000)
-            observationJob.cancel()
+                kotlinx.coroutines.delay(8_000)
+                observationJob.cancel()
 
-            val detectedDeviceModel = registry.getLibrePodsProvider().deviceState.value?.displayName
-            val detectedProviders = buildSet {
-                if (librePodsResult?.detectedDevice == true || detectedDeviceModel != null) {
-                    add("librepods_airpods")
+                val detectedDeviceModel = registry.getLibrePodsProvider().deviceState.value?.displayName
+                val detectedProviders = buildSet {
+                    if (librePodsResult?.detectedDevice == true || detectedDeviceModel != null) {
+                        add("librepods_airpods")
+                    }
                 }
-            }
 
-            registry.stop()
+                val phoneModel = android.os.Build.MODEL ?: "Unknown"
+                val androidVersion = android.os.Build.VERSION.RELEASE ?: "Unknown"
 
-            val phoneModel = android.os.Build.MODEL ?: "Unknown"
-            val androidVersion = android.os.Build.VERSION.RELEASE ?: "Unknown"
-
-            val entry = buildCapabilityEntryFromSetup(
-                SetupCapabilityAssessment(
-                    deviceModel = detectedDeviceModel,
-                    phoneModel = phoneModel,
-                    androidVersion = androidVersion,
-                    observedEvents = observedEvents.toList(),
-                    detectedProviders = detectedProviders,
+                val entry = buildCapabilityEntryFromSetup(
+                    SetupCapabilityAssessment(
+                        deviceModel = detectedDeviceModel,
+                        phoneModel = phoneModel,
+                        androidVersion = androidVersion,
+                        observedEvents = observedEvents.toList(),
+                        detectedProviders = detectedProviders,
+                    )
                 )
-            )
 
-            if (!persistCapabilityObservation(context, entry)) {
-                return@launch
+                if (!persistCapabilityObservation(context, entry)) {
+                    return@launch
+                }
+                RelayStateStore.setSetupPhase(SetupPhase.GESTURE_TEST)
+                Log.i(
+                    TAG,
+                    "setup probe saved deviceModel=${entry.deviceModel} phoneModel=${entry.phoneModel} providers=${entry.providersObserved.joinToString(",")} wake=${entry.wakeGesture} interrupt=${entry.interruptGesture} approval=${entry.approveRejectGesture} ear=${entry.earDetection} battery=${entry.batteryStatus}",
+                )
+            } finally {
+                observationJob.cancel()
+                registry.stop()
+                Log.i(TAG, "setup probe cleaned up")
             }
-            RelayStateStore.setSetupPhase(SetupPhase.GESTURE_TEST)
-            Log.i(
-                TAG,
-                "setup probe saved deviceModel=${entry.deviceModel} phoneModel=${entry.phoneModel} providers=${entry.providersObserved.joinToString(",")} wake=${entry.wakeGesture} interrupt=${entry.interruptGesture} approval=${entry.approveRejectGesture} ear=${entry.earDetection} battery=${entry.batteryStatus}",
-            )
         }
     }
 
@@ -505,59 +509,61 @@ class RelayViewModel(
                 ),
             )
 
-            while (System.currentTimeMillis() < deadline) {
-                val remaining = ((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
-                val currentWake = state.value.lastWakeSignal
+            try {
+                while (System.currentTimeMillis() < deadline) {
+                    val remaining = ((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+                    val currentWake = state.value.lastWakeSignal
 
-                if (currentWake != null && currentWake != previousWake &&
-                    isDirectHardwareWakeProvider(currentWake.provider.providerId)
-                ) {
-                    physicalWakeObserved = true
+                    if (currentWake != null && currentWake != previousWake &&
+                        isDirectHardwareWakeProvider(currentWake.provider.providerId)
+                    ) {
+                        physicalWakeObserved = true
+                        RelayStateStore.setSetupTestState(
+                            SetupTestState(
+                                isRunning = true,
+                                secondsRemaining = remaining,
+                                statusLabel = "Signal received",
+                                providerName = currentWake.provider.providerLabel,
+                                confidence = currentWake.provider.confidence.name.lowercase(),
+                                mappedEvent = currentWake.trigger,
+                            ),
+                        )
+                        kotlinx.coroutines.delay(800)
+                        break
+                    }
+
                     RelayStateStore.setSetupTestState(
                         SetupTestState(
                             isRunning = true,
                             secondsRemaining = remaining,
-                            statusLabel = "Signal received",
-                            providerName = currentWake.provider.providerLabel,
-                            confidence = currentWake.provider.confidence.name.lowercase(),
-                            mappedEvent = currentWake.trigger,
+                            statusLabel = "Waiting for earbud signal",
                         ),
                     )
-                    kotlinx.coroutines.delay(800)
-                    break
+                    kotlinx.coroutines.delay(200)
                 }
 
-                RelayStateStore.setSetupTestState(
-                    SetupTestState(
-                        isRunning = true,
-                        secondsRemaining = remaining,
-                        statusLabel = "Waiting for earbud signal",
-                    ),
-                )
-                kotlinx.coroutines.delay(200)
-            }
-
-            RelayStateStore.setSetupTestState(SetupTestState())
-
-            val matrix = com.openclaw.relay.device.DeviceProfileStorage.loadMatrix(context)
-            val currentDevice = com.openclaw.relay.device.DeviceProfileStorage.getCurrentDevice(context)
-            if (currentDevice != null) {
-                val entry = matrix.findEntry(currentDevice.first, currentDevice.second)
-                if (entry != null) {
-                    val updated = entry.copy(
-                        wakeGesture = if (physicalWakeObserved) {
-                            com.openclaw.relay.device.CapabilityStatus.PROVEN
-                        } else {
-                            entry.wakeGesture
-                        },
-                    )
-                    if (!persistCapabilityObservation(context, updated)) {
-                        return@launch
+                val matrix = com.openclaw.relay.device.DeviceProfileStorage.loadMatrix(context)
+                val currentDevice = com.openclaw.relay.device.DeviceProfileStorage.getCurrentDevice(context)
+                if (currentDevice != null) {
+                    val entry = matrix.findEntry(currentDevice.first, currentDevice.second)
+                    if (entry != null) {
+                        val updated = entry.copy(
+                            wakeGesture = if (physicalWakeObserved) {
+                                com.openclaw.relay.device.CapabilityStatus.PROVEN
+                            } else {
+                                entry.wakeGesture
+                            },
+                        )
+                        if (!persistCapabilityObservation(context, updated)) {
+                            return@launch
+                        }
                     }
                 }
+                RelayStateStore.setSetupPhase(SetupPhase.STT_TEST)
+                Log.i(TAG, "setup wake test completed physicalWakeObserved=$physicalWakeObserved")
+            } finally {
+                RelayStateStore.setSetupTestState(SetupTestState())
             }
-            RelayStateStore.setSetupPhase(SetupPhase.STT_TEST)
-            Log.i(TAG, "setup wake test completed physicalWakeObserved=$physicalWakeObserved")
         }
     }
 
@@ -579,82 +585,84 @@ class RelayViewModel(
                 ),
             )
 
-            while (System.currentTimeMillis() < deadline) {
-                val remaining = ((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
-                val currentTranscript = state.value.lastTranscript
-                val currentWake = state.value.lastWakeSignal
+            try {
+                while (System.currentTimeMillis() < deadline) {
+                    val remaining = ((deadline - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+                    val currentTranscript = state.value.lastTranscript
+                    val currentWake = state.value.lastWakeSignal
 
-                if (!physicalWakeObserved && currentWake != null && currentWake != previousWake &&
-                    isDirectHardwareWakeProvider(currentWake.provider.providerId)
-                ) {
-                    physicalWakeObserved = true
-                    Log.i(TAG, "setup stt test: physical wake observed from ${currentWake.provider.providerId}")
-                    RelayStateStore.setSetupTestState(
-                        SetupTestState(
-                            isRunning = true,
-                            secondsRemaining = remaining,
-                            statusLabel = "Wake observed · listening for speech",
-                            providerName = currentWake.provider.providerLabel,
-                            confidence = currentWake.provider.confidence.name.lowercase(),
-                            mappedEvent = currentWake.trigger,
-                        ),
-                    )
+                    if (!physicalWakeObserved && currentWake != null && currentWake != previousWake &&
+                        isDirectHardwareWakeProvider(currentWake.provider.providerId)
+                    ) {
+                        physicalWakeObserved = true
+                        Log.i(TAG, "setup stt test: physical wake observed from ${currentWake.provider.providerId}")
+                        RelayStateStore.setSetupTestState(
+                            SetupTestState(
+                                isRunning = true,
+                                secondsRemaining = remaining,
+                                statusLabel = "Wake observed · listening for speech",
+                                providerName = currentWake.provider.providerLabel,
+                                confidence = currentWake.provider.confidence.name.lowercase(),
+                                mappedEvent = currentWake.trigger,
+                            ),
+                        )
+                    }
+
+                    if (physicalWakeObserved && currentTranscript.isNotBlank() && currentTranscript != previousTranscript) {
+                        transcriptAfterPhysicalWake = true
+                        RelayStateStore.setSetupTestState(
+                            SetupTestState(
+                                isRunning = true,
+                                secondsRemaining = remaining,
+                                statusLabel = "Transcript captured",
+                                mappedEvent = currentTranscript.take(40),
+                            ),
+                        )
+                        kotlinx.coroutines.delay(800)
+                        break
+                    }
+
+                    if (!physicalWakeObserved) {
+                        RelayStateStore.setSetupTestState(
+                            SetupTestState(
+                                isRunning = true,
+                                secondsRemaining = remaining,
+                                statusLabel = "Waiting for physical wake",
+                            ),
+                        )
+                    }
+                    kotlinx.coroutines.delay(200)
                 }
 
-                if (physicalWakeObserved && currentTranscript.isNotBlank() && currentTranscript != previousTranscript) {
-                    transcriptAfterPhysicalWake = true
-                    RelayStateStore.setSetupTestState(
-                        SetupTestState(
-                            isRunning = true,
-                            secondsRemaining = remaining,
-                            statusLabel = "Transcript captured",
-                            mappedEvent = currentTranscript.take(40),
-                        ),
-                    )
-                    kotlinx.coroutines.delay(800)
-                    break
-                }
+                val sttProven = transcriptAfterPhysicalWake
 
-                if (!physicalWakeObserved) {
-                    RelayStateStore.setSetupTestState(
-                        SetupTestState(
-                            isRunning = true,
-                            secondsRemaining = remaining,
-                            statusLabel = "Waiting for physical wake",
-                        ),
-                    )
-                }
-                kotlinx.coroutines.delay(200)
-            }
-
-            RelayStateStore.setSetupTestState(SetupTestState())
-
-            val sttProven = transcriptAfterPhysicalWake
-
-            val matrix = com.openclaw.relay.device.DeviceProfileStorage.loadMatrix(context)
-            val currentDevice = com.openclaw.relay.device.DeviceProfileStorage.getCurrentDevice(context)
-            if (currentDevice != null) {
-                val entry = matrix.findEntry(currentDevice.first, currentDevice.second)
-                if (entry != null) {
-                    val updated = entry.copy(
-                        wakeGesture = if (physicalWakeObserved) {
-                            com.openclaw.relay.device.CapabilityStatus.PROVEN
-                        } else {
-                            entry.wakeGesture
-                        },
-                        sttAfterWake = if (sttProven) {
-                            com.openclaw.relay.device.CapabilityStatus.PROVEN
-                        } else {
-                            entry.sttAfterWake
-                        },
-                    )
-                    if (!persistCapabilityObservation(context, updated)) {
-                        return@launch
+                val matrix = com.openclaw.relay.device.DeviceProfileStorage.loadMatrix(context)
+                val currentDevice = com.openclaw.relay.device.DeviceProfileStorage.getCurrentDevice(context)
+                if (currentDevice != null) {
+                    val entry = matrix.findEntry(currentDevice.first, currentDevice.second)
+                    if (entry != null) {
+                        val updated = entry.copy(
+                            wakeGesture = if (physicalWakeObserved) {
+                                com.openclaw.relay.device.CapabilityStatus.PROVEN
+                            } else {
+                                entry.wakeGesture
+                            },
+                            sttAfterWake = if (sttProven) {
+                                com.openclaw.relay.device.CapabilityStatus.PROVEN
+                            } else {
+                                entry.sttAfterWake
+                            },
+                        )
+                        if (!persistCapabilityObservation(context, updated)) {
+                            return@launch
+                        }
                     }
                 }
+                RelayStateStore.setSetupPhase(SetupPhase.COMPLETE)
+                Log.i(TAG, "setup stt test completed physicalWakeObserved=$physicalWakeObserved transcriptAfterPhysicalWake=$transcriptAfterPhysicalWake sttProven=$sttProven")
+            } finally {
+                RelayStateStore.setSetupTestState(SetupTestState())
             }
-            RelayStateStore.setSetupPhase(SetupPhase.COMPLETE)
-            Log.i(TAG, "setup stt test completed physicalWakeObserved=$physicalWakeObserved transcriptAfterPhysicalWake=$transcriptAfterPhysicalWake sttProven=$sttProven")
         }
     }
 

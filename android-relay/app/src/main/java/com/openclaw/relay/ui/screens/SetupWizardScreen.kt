@@ -21,8 +21,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
+import com.openclaw.relay.RelayConfig
 import com.openclaw.relay.SetupPhase
 import com.openclaw.relay.SetupTestState
+import com.openclaw.relay.isPaired
 import com.openclaw.relay.ui.components.ButtonStyle
 import com.openclaw.relay.ui.components.DevPodsButton
 import com.openclaw.relay.ui.components.DevPodsCard
@@ -38,6 +40,8 @@ import com.openclaw.relay.ui.theme.DevPodsColor
 fun SetupWizardScreen(
     phase: SetupPhase,
     testState: SetupTestState = SetupTestState(),
+    bridgeStatus: String = "Unknown",
+    config: RelayConfig = RelayConfig(),
     errorMessage: String?,
     userFacingErrorMessage: String?,
     onStartSetup: () -> Unit,
@@ -170,10 +174,46 @@ fun SetupWizardScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = DevPodsColor.Muted,
                 )
+
+                // Live status indicator — shows current pairing/bridge state
+                val statusLabel = when {
+                    bridgeStatus.startsWith("Healthy", ignoreCase = true) ->
+                        bridgeStatus
+                    bridgeStatus.startsWith("Pairing saved", ignoreCase = true) ->
+                        bridgeStatus
+                    config.isPaired() ->
+                        "Paired · ${config.bridgeBaseUrl}"
+                    else ->
+                        "Not paired"
+                }
+                val statusChipStyle = when {
+                    bridgeStatus.startsWith("Healthy", ignoreCase = true) ->
+                        com.openclaw.relay.ui.components.ChipStyle.Success
+                    bridgeStatus.startsWith("Pairing saved", ignoreCase = true) ->
+                        com.openclaw.relay.ui.components.ChipStyle.Success
+                    config.isPaired() ->
+                        com.openclaw.relay.ui.components.ChipStyle.Info
+                    else ->
+                        com.openclaw.relay.ui.components.ChipStyle.Muted
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DevPodsChip(
+                        text = statusLabel,
+                        style = statusChipStyle,
+                    )
+                }
+
                 Text(
-                    text = "Success looks like: the status below changes to 'Pairing saved' or 'Healthy'.",
+                    text = if (config.isPaired()) {
+                        "Success: your bridge is connected. Tap Continue to proceed."
+                    } else {
+                        "Import a pairing link to connect. The status above will update when the bridge responds."
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = DevPodsColor.Teal,
+                    color = if (config.isPaired()) DevPodsColor.Teal else DevPodsColor.Muted,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -193,10 +233,10 @@ fun SetupWizardScreen(
                     )
                 }
                 DevPodsButton(
-                    text = "Continue",
+                    text = if (config.isPaired()) "Continue" else "Skip for now",
                     onClick = onProbeDevice,
                     modifier = Modifier.fillMaxWidth(),
-                    style = ButtonStyle.Primary,
+                    style = if (config.isPaired()) ButtonStyle.Primary else ButtonStyle.Ghost,
                 )
             }
 

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -84,6 +85,14 @@ class MainActivity : ComponentActivity() {
         dispatchPendingAutomationIntent()
     }
 
+    /**
+     * Clear any stale pairing intent so a future deep-link import starts fresh.
+     * Called after [consumePairingDataIntent] has processed a pairing link.
+     */
+    private fun clearPendingPairingIntent() {
+        pendingAutomationIntent = null
+    }
+
     override fun onResume() {
         super.onResume()
         dispatchPendingAutomationIntent()
@@ -95,8 +104,19 @@ class MainActivity : ComponentActivity() {
             data.contains("/pairing", ignoreCase = true)
         if (!isPairingIntent) return
 
-        relayViewModel.importPairingUri(this, data)
-        intent.setData(null)
+        try {
+            relayViewModel.importPairingUri(this, data)
+            Log.i("OpenClawRelay", "Consumed pairing intent: ${data.take(80)}")
+        } catch (e: Exception) {
+            Log.e("OpenClawRelay", "Failed to import pairing intent", e)
+            relayViewModel.reportPairingScanError("Could not import pairing link. Please paste it manually.")
+        } finally {
+            // Always clear the intent data so it is never re-processed, and clear
+            // pendingAutomationIntent so dispatchPendingAutomationIntent() stops
+            // re-evaluating it on every onResume.
+            intent.setData(null)
+            clearPendingPairingIntent()
+        }
     }
 
     private fun buildRuntimePermissions(): Array<String> {
@@ -231,6 +251,8 @@ private fun RelayApp(
         SetupWizardScreen(
             phase = state.setupPhase,
             testState = state.setupTestState,
+            bridgeStatus = state.bridgeStatus,
+            config = state.config,
             errorMessage = state.errorMessage,
             userFacingErrorMessage = state.userFacingErrorMessage,
             onStartSetup = { relayViewModel.startSetup(context) },
