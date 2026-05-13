@@ -6,11 +6,19 @@ It is intentionally operational rather than aspirational. The goal is to preserv
 
 ## Current State
 
-- Physical earbud input is now partially visible on the Android relay path.
+- Synthetic Android media-session input is confirmed on the Android relay path, but physical earbud-origin input is still unproven on the current build.
 - Real device behavior is still not reliable enough to call the tap workflow solved.
-- The strongest confirmed hardware path on this stack is the standard media-button wake route exposed by Android.
+- The Android media-button route can still wake the bridge under synthetic system dispatch, but the exact physical gesture mapping is still unproven on this device.
 - The most reliable fallback path remains assistant long press, which now doubles as an implementation interrupt while work is active.
+- The latest user-reported pass said triple tap and long press produced audible responses while double tap did not, but that revised mapping is not yet backed by captured traces in-repo.
 - Spoken wake acknowledgements can succeed while follow-up STT still degrades on the same device, so audible response alone does not prove the full loop is healthy.
+
+## Latest Evidence Snapshot
+
+- A fresh bridge-backed validation pass on 2026-05-11 kept `BLUETOOTH_SCAN` denied and the app op at `ignore`, so the LibrePods BLE lane is still blocked on RMX3990.
+- A direct `adb shell cmd media_session dispatch headsethook` probe produced fresh `wake_and_listen` `received` and `allowed` entries for session `android-relay` in the bridge audit log at `2026-05-11T12:42:51Z`.
+- That proves the `android_media_session` provider lane can still drive the DevPods bridge under synthetic Android dispatch on this phone.
+- It does not prove that a real Buds Air7 gesture reached the app on the current build, so the checked-in support matrix remains conservative.
 
 ## Breakthrough Summary
 
@@ -31,14 +39,15 @@ The changes that mattered were:
 - Simulated Android media-button dispatch reaches the bridge and produces speech.
 - Explicit assistant launch reaches the relay and produces speech.
 - The relay UI can distinguish physical media-button wake from manual push-to-talk and debug injection.
-- On the RMX3990, at least one real earbud gesture path is now observable through the Android relay flow.
+- On the RMX3990, the `android_media_session` provider path was observed in the latest pass through synthetic system dispatch.
 - Running or queued implementation work can now be cancelled from the bridge side instead of always being reported as unstoppable.
 - Successful background work can now return a bounded autonomy plan: speak a report, wait briefly for interruption, and continue with a safe next step on silence.
 
 ## What Is Not Yet Proven
 
-- Consistent physical delivery for every double tap.
-- Reliable triple tap or long press delivery through standard Android media buttons on this earbud stack.
+- A real Buds Air7 gesture reaching the relay on the latest RMX3990 build.
+- A stable, repeatable mapping for double tap, triple tap, and long press on this exact hardware and build.
+- Consistent delivery for whichever gesture is declared as the primary wake on this stack.
 - Reliable STT capture after every physical wake on this device.
 - A full zero-touch implementation loop that survives long sessions without any fallback trigger.
 
@@ -47,9 +56,9 @@ The changes that mattered were:
 ### Realme Buds Air7 on RMX3990
 
 - The buds do not expose a clean, uniform Android event surface for every gesture.
-- Double tap is the most realistic standard media-button candidate.
-- Vendor-specific long press behavior is better handled through the assistant role than through assumed AVRCP mappings.
-- Treat triple tap and long press as device-dependent until logs prove they arrive through the same routed path.
+- Earlier traced passes showed double tap as the most realistic standard media-button candidate.
+- The latest user-reported pass suggests triple tap and long press can also produce audible responses while double tap may regress.
+- Treat all gesture-specific claims as provisional until the relay hardware-verification card and logcat capture the same behavior on the same build.
 
 ### Audio Routing
 
@@ -75,11 +84,12 @@ Run this order on the real phone.
 Use these checks in this order:
 
 1. `adb logcat -d -s OpenClawRelay:I`
-2. `adb shell dumpsys media_session`
-3. `adb shell settings get secure assistant`
-4. `adb shell cmd role get-role-holders android.app.role.ASSISTANT`
-5. Relay UI hardware-verification card
-6. Relay UI autonomy card
+2. `Get-Content runtime-data/audit.log -Tail 20`
+3. `adb shell dumpsys media_session`
+4. `adb shell settings get secure assistant`
+5. `adb shell cmd role get-role-holders android.app.role.ASSISTANT`
+6. Relay UI hardware-verification card
+7. Relay UI autonomy card
 
 If simulated dispatch works and real taps do not, the missing link is almost always Android delivery or device-specific firmware behavior, not bridge routing.
 
@@ -131,7 +141,7 @@ The relay now emits these Android-specific follow-up events when needed:
 
 ## Next Engineering Moves
 
-1. Capture repeatable real-device traces for successful and failed double-tap wake attempts.
+1. Capture repeatable real-device traces for successful and failed double-tap, triple-tap, and long-press wake attempts on the current build.
 2. Instrument the STT start path more deeply on RMX3990 when wake speech succeeds but speech capture stalls.
-3. Decide whether double tap should remain the primary interrupt trigger on this hardware, or whether assistant long press should be the preferred user-facing fallback.
+3. Decide which gesture should remain the primary interrupt trigger on this hardware only after the newest field behavior is backed by traces.
 4. Extend the bounded autonomy loop from the current safe next-step chain into the highest-value implementation tasks that remain inside the repo allowlist.

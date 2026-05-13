@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Media3 requires opting in to UnstableApi; this is intentional and required. -->
+    <issue id="UnsafeOptInUsageError">
+        <option name="opt-in" value="androidx.media3.common.util.UnstableApi" />
+    </issue>
+
+    <!-- RelayService is exported because MediaSessionService must be discoverable by
+         the system media framework. It is gated by a signature-level custom permission
+         (com.openclaw.relay.permission.BIND_RELAY_SERVICE) so only the DevPods bridge
+         (signed with the same key) can bind. The exported=true lint warning is expected
+         and accepted; the signature permission provides the security boundary. -->
+    <issue id="ExportedService" severity="ignore">
+        <ignore path="src/main/AndroidManifest.xml" />
+    </issue>
+</lint>

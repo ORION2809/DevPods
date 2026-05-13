@@ -1,0 +1,140 @@
+{
+  "version": "2026-05-13",
+  "providers": [
+    {
+      "providerId": "apple_airpods",
+      "providerLabel": "Apple AirPods / Beats",
+      "brands": ["Apple", "Beats"],
+      "models": [
+        {"name": "AirPods (Gen 1)", "modelNumbers": ["A1523", "A1722"], "status": "code_complete"},
+        {"name": "AirPods (Gen 2)", "modelNumbers": ["A2031", "A2032"], "status": "code_complete"},
+        {"name": "AirPods (Gen 3)", "modelNumbers": ["A2564", "A2565"], "status": "code_complete"},
+        {"name": "AirPods (Gen 4)", "modelNumbers": ["A3050", "A3053", "A3054"], "status": "code_complete"},
+        {"name": "AirPods (Gen 4 ANC)", "modelNumbers": ["A3055", "A3056", "A3057"], "status": "code_complete"},
+        {"name": "AirPods Pro", "modelNumbers": ["A2083", "A2084"], "status": "code_complete"},
+        {"name": "AirPods Pro 2", "modelNumbers": ["A2698", "A2699", "A2931"], "status": "code_complete"},
+        {"name": "AirPods Pro 2 USB-C", "modelNumbers": ["A3047", "A3048", "A3049"], "status": "code_complete"},
+        {"name": "AirPods Pro 3", "modelNumbers": ["A3063", "A3064", "A3065"], "status": "code_complete"},
+        {"name": "AirPods Max", "modelNumbers": ["A2096"], "status": "code_complete"},
+        {"name": "AirPods Max USB-C", "modelNumbers": ["A3184"], "status": "code_complete"},
+        {"name": "Beats Solo 3", "modelNumbers": ["A1796"], "status": "code_complete"},
+        {"name": "Beats Studio 3", "modelNumbers": ["A1914"], "status": "code_complete"},
+        {"name": "Beats Flex", "modelNumbers": ["A2295"], "status": "code_complete"},
+        {"name": "Powerbeats Pro", "modelNumbers": ["A2047", "A2048", "A2453", "A2454"], "status": "code_complete"},
+        {"name": "Beats Fit Pro", "modelNumbers": ["A2576", "A2577", "A2578"], "status": "code_complete"},
+        {"name": "Beats Studio Buds+", "modelNumbers": ["A2871", "A2872", "A2952"], "status": "code_complete"}
+      ],
+      "features": {
+        "battery": ["left", "right", "case"],
+        "earDetection": true,
+        "ancControl": true,
+        "stemPressEvents": true,
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "samsung_galaxy_buds",
+      "providerLabel": "Samsung Galaxy Buds",
+      "brands": ["Samsung"],
+      "models": [
+        {"name": "Galaxy Buds", "modelNumbers": ["SM-R170"], "status": "code_complete"},
+        {"name": "Galaxy Buds Live", "modelNumbers": ["SM-R180"], "status": "code_complete"},
+        {"name": "Galaxy Buds Pro", "modelNumbers": ["SM-R190"], "status": "code_complete"},
+        {"name": "Galaxy Buds2", "modelNumbers": ["SM-R177"], "status": "code_complete"},
+        {"name": "Galaxy Buds2 Pro", "modelNumbers": ["SM-R510"], "status": "code_complete"},
+        {"name": "Galaxy Buds FE", "modelNumbers": ["SM-R400"], "status": "code_complete"},
+        {"name": "Galaxy Buds3 Pro", "modelNumbers": ["SM-R630"], "status": "code_complete"}
+      ],
+      "features": {
+        "battery": ["left", "right", "case"],
+        "earDetection": false,
+        "ancControl": true,
+        "touchConfiguration": true,
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "sony_headphones",
+      "providerLabel": "Sony Headphones",
+      "brands": ["Sony"],
+      "models": [
+        {"name": "WF-1000XM4", "status": "scaffolded"},
+        {"name": "WF-1000XM5", "status": "scaffolded"},
+        {"name": "WH-1000XM4", "status": "scaffolded"},
+        {"name": "WH-1000XM5", "status": "scaffolded"},
+        {"name": "LinkBuds", "status": "scaffolded"},
+        {"name": "LinkBuds S", "status": "scaffolded"}
+      ],
+      "features": {
+        "battery": ["single"],
+        "earDetection": false,
+        "ancControl": true,
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "nothing_ear",
+      "providerLabel": "Nothing Ear",
+      "brands": ["Nothing"],
+      "models": [
+        {"name": "Nothing Ear (1)", "status": "scaffolded"},
+        {"name": "Nothing Ear (2)", "status": "scaffolded"},
+        {"name": "Nothing Ear (a)", "status": "scaffolded"},
+        {"name": "CMF Buds", "status": "scaffolded"}
+      ],
+      "features": {
+        "battery": ["left", "right", "case"],
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "oppo_realme",
+      "providerLabel": "Oppo / Realme / OnePlus",
+      "brands": ["Oppo", "Realme", "OnePlus"],
+      "models": [
+        {"name": "Oppo Enco Air series", "status": "scaffolded"},
+        {"name": "Realme Buds Air series", "status": "scaffolded"},
+        {"name": "OnePlus Buds series", "status": "scaffolded"}
+      ],
+      "features": {
+        "battery": ["left", "right", "case"],
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "generic_bluetooth_headset",
+      "providerLabel": "Generic Bluetooth Headset",
+      "brands": ["Universal"],
+      "models": [{"name": "Any Bluetooth audio device", "status": "validated"}],
+      "features": {
+        "connectionDetection": true,
+        "audioRouteControl": true,
+        "mediaSessionFallback": true
+      }
+    },
+    {
+      "providerId": "android_media_session",
+      "providerLabel": "Android Media Controls",
+      "brands": ["Universal"],
+      "models": [{"name": "All Android-recognized headsets", "status": "validated"}],
+      "features": {
+        "wakeSinglePress": true,
+        "wakeLongPress": true,
+        "interruptDoublePress": true,
+        "approveTriplePress": true
+      }
+    }
+  ],
+  "fallbackChain": [
+    "apple_airpods",
+    "samsung_galaxy_buds",
+    "sony_headphones",
+    "nothing_ear",
+    "oppo_realme",
+    "librepods_airpods",
+    "android_media_session",
+    "assistant_entry",
+    "generic_bluetooth_headset",
+    "generic_gatt_battery"
+  ]
+}

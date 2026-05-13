@@ -1,0 +1,1144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevPods Relay Mobile UI Prototype</title>
+  <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --surface: #fffcf4;
+      --surface-2: #f0e9dc;
+      --ink: #0d1b1e;
+      --ink-2: #173235;
+      --muted: #62716d;
+      --line: #d8ded5;
+      --teal: #0f766e;
+      --mint: #35d68b;
+      --mint-soft: #ddf8e9;
+      --amber: #b96a16;
+      --amber-soft: #fff1d6;
+      --red: #b42318;
+      --red-soft: #ffe1dc;
+      --blue: #2563eb;
+      --blue-soft: #e1eaff;
+      --white: #ffffff;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(53, 214, 139, 0.20), transparent 28rem),
+        radial-gradient(circle at 80% 4%, rgba(244, 184, 96, 0.20), transparent 26rem),
+        #e9e2d6;
+      color: var(--ink);
+      padding: 48px;
+    }
+
+    .canvas {
+      display: grid;
+      grid-template-columns: repeat(4, 390px);
+      gap: 54px 60px;
+      align-items: start;
+    }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 34px;
+      background: var(--bg);
+      box-shadow: 0 22px 42px rgba(13, 27, 30, 0.18);
+      padding: 0 24px;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      left: -92px;
+      top: -88px;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(53, 214, 139, 0.14);
+    }
+
+    .phone::after {
+      content: "";
+      position: absolute;
+      right: -76px;
+      top: 38px;
+      width: 220px;
+      height: 220px;
+      border-radius: 999px;
+      background: rgba(244, 184, 96, 0.13);
+    }
+
+    .phone > * { position: relative; z-index: 1; }
+
+    .status {
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .battery {
+      width: 28px;
+      height: 12px;
+      border: 1px solid rgba(13, 27, 30, 0.45);
+      border-radius: 4px;
+      padding: 2px 4px;
+    }
+
+    .battery span {
+      display: block;
+      width: 17px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(13, 27, 30, 0.5);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+    }
+
+    .app-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .mode {
+      border-radius: 999px;
+      background: var(--mint-soft);
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 8px 12px;
+    }
+
+    .mode.dev {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+      margin-top: 20px;
+      min-height: 40px;
+    }
+
+    .hero-title {
+      font-size: 31px;
+      line-height: 1.08;
+      letter-spacing: -0.05em;
+      font-weight: 850;
+      margin: 22px 0 0;
+    }
+
+    .copy {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .card {
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.34)),
+        linear-gradient(135deg, color-mix(in srgb, var(--accent, var(--teal)) 12%, transparent), rgba(255, 252, 244, 0.54));
+      background-blend-mode: screen, normal;
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 24px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.86),
+        inset 0 -18px 36px rgba(255, 255, 255, 0.18),
+        0 18px 46px rgba(13, 27, 30, 0.12);
+      backdrop-filter: blur(22px) saturate(1.35);
+      -webkit-backdrop-filter: blur(22px) saturate(1.35);
+      padding: 18px 20px;
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 7px;
+      background: var(--accent, var(--teal));
+      opacity: 0.78;
+      box-shadow: 0 0 24px color-mix(in srgb, var(--accent, var(--teal)) 46%, transparent);
+      z-index: 0;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: 23px;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.88), transparent 34%),
+        linear-gradient(155deg, rgba(255, 255, 255, 0.58), transparent 44%),
+        linear-gradient(330deg, rgba(255, 255, 255, 0.22), transparent 56%);
+      mix-blend-mode: screen;
+      opacity: 0.68;
+      z-index: 0;
+    }
+
+    .card > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .card h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .card p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .card[style*="background: var(--red-soft)"] {
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.26)),
+        linear-gradient(135deg, rgba(255, 225, 220, 0.74), rgba(255, 252, 244, 0.48)) !important;
+      border-color: rgba(255, 255, 255, 0.72) !important;
+    }
+
+    .flow-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .flow-node {
+      min-height: 58px;
+      border-radius: 20px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.42);
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 850;
+      line-height: 1.2;
+      backdrop-filter: blur(16px) saturate(1.25);
+    }
+
+    .flow-node.active {
+      color: var(--teal);
+      background: rgba(221, 248, 233, 0.50);
+    }
+
+    .toggle-row,
+    .detail-row,
+    .check-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 0;
+      border-top: 1px solid rgba(13, 27, 30, 0.08);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .toggle-row:first-of-type,
+    .detail-row:first-of-type,
+    .check-row:first-of-type {
+      border-top: 0;
+    }
+
+    .toggle-copy,
+    .detail-copy {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.35;
+      margin-top: 3px;
+    }
+
+    .switch {
+      width: 48px;
+      height: 30px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 3px;
+      background: rgba(15, 118, 110, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      box-shadow: inset 0 1px 4px rgba(13, 27, 30, 0.10);
+    }
+
+    .switch::before {
+      content: "";
+      display: block;
+      width: 22px;
+      height: 22px;
+      margin-left: 18px;
+      border-radius: 50%;
+      background: var(--teal);
+      box-shadow: 0 4px 12px rgba(13, 27, 30, 0.18);
+    }
+
+    .switch.off {
+      background: rgba(13, 27, 30, 0.09);
+    }
+
+    .switch.off::before {
+      margin-left: 0;
+      background: var(--muted);
+    }
+
+    .queue-meter {
+      height: 9px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(13, 27, 30, 0.08);
+      margin-top: 14px;
+    }
+
+    .queue-meter span {
+      display: block;
+      width: 62%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--amber), var(--teal));
+    }
+
+    .countdown {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--teal);
+      font-size: 20px;
+      font-weight: 900;
+      background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.78) 0 52%, transparent 54%),
+        conic-gradient(var(--teal) 0 64%, rgba(13, 27, 30, 0.08) 64% 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 12px 24px rgba(13, 27, 30, 0.10);
+    }
+
+    .sheet {
+      border-radius: 32px 32px 24px 24px;
+      padding: 20px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.34)),
+        rgba(255, 252, 244, 0.56);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.88),
+        0 20px 46px rgba(13, 27, 30, 0.14);
+      backdrop-filter: blur(24px) saturate(1.35);
+    }
+
+    .grabber {
+      width: 44px;
+      height: 5px;
+      margin: 0 auto 16px;
+      border-radius: 999px;
+      background: rgba(13, 27, 30, 0.16);
+    }
+
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .risk-cell {
+      border-radius: 18px;
+      padding: 11px 10px;
+      background: rgba(255, 255, 255, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.66);
+      font-size: 11px;
+      font-weight: 850;
+      color: var(--muted);
+    }
+
+    .risk-cell strong {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .modal-layer {
+      position: relative;
+      min-height: 430px;
+      border-radius: 34px;
+      overflow: hidden;
+      background: rgba(13, 27, 30, 0.18);
+      padding: 20px;
+      display: flex;
+      align-items: end;
+    }
+
+    .modal-card {
+      width: 100%;
+      border-radius: 30px;
+      padding: 20px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.38)),
+        rgba(255, 252, 244, 0.62);
+      border: 1px solid rgba(255, 255, 255, 0.74);
+      box-shadow: 0 22px 46px rgba(13, 27, 30, 0.18);
+      backdrop-filter: blur(26px) saturate(1.35);
+    }
+
+    .notification-card {
+      min-height: 142px;
+      border-radius: 34px;
+      padding: 18px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.80), rgba(255, 255, 255, 0.36)),
+        rgba(255, 252, 244, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.74);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 22px 46px rgba(13, 27, 30, 0.14);
+      backdrop-filter: blur(24px) saturate(1.35);
+    }
+
+    .notification-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .notification-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .mini-action {
+      min-height: 46px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--teal);
+      background: rgba(255, 255, 255, 0.46);
+      border: 1px solid rgba(255, 255, 255, 0.70);
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.15;
+    }
+
+    .mini-action.danger {
+      color: var(--red);
+      background: rgba(255, 225, 220, 0.46);
+    }
+
+    .scan-window {
+      height: 254px;
+      border-radius: 34px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(13, 27, 30, 0.72), rgba(13, 27, 30, 0.28)),
+        radial-gradient(circle at 50% 50%, rgba(53, 214, 139, 0.30), transparent 8rem);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .scan-corners::before,
+    .scan-corners::after,
+    .scan-window::before,
+    .scan-window::after {
+      content: "";
+      position: absolute;
+      width: 58px;
+      height: 58px;
+      border-color: rgba(255, 255, 255, 0.86);
+      border-style: solid;
+    }
+
+    .scan-window::before {
+      left: 42px;
+      top: 42px;
+      border-width: 3px 0 0 3px;
+      border-radius: 18px 0 0 0;
+    }
+
+    .scan-window::after {
+      right: 42px;
+      top: 42px;
+      border-width: 3px 3px 0 0;
+      border-radius: 0 18px 0 0;
+    }
+
+    .scan-corners::before {
+      left: 42px;
+      bottom: 42px;
+      border-width: 0 0 3px 3px;
+      border-radius: 0 0 0 18px;
+    }
+
+    .scan-corners::after {
+      right: 42px;
+      bottom: 42px;
+      border-width: 0 3px 3px 0;
+      border-radius: 0 0 18px 0;
+    }
+
+    .compat-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 0;
+      border-top: 1px solid rgba(13, 27, 30, 0.08);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .compat-row:first-of-type {
+      border-top: 0;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 0;
+      border-top: 1px solid rgba(13, 27, 30, 0.08);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .checkbox-row:first-of-type {
+      border-top: 0;
+    }
+
+    .checkbox {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: var(--teal);
+      box-shadow: 0 6px 14px rgba(13, 27, 30, 0.14);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .checkbox.off {
+      background: rgba(13, 27, 30, 0.08);
+      color: transparent;
+      box-shadow: inset 0 0 0 1px rgba(13, 27, 30, 0.12);
+    }
+
+    .empty-glyph {
+      width: 92px;
+      height: 92px;
+      margin: 14px auto 18px;
+      border-radius: 32px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 38% 28%, rgba(255, 255, 255, 0.86), transparent 30%),
+        rgba(255, 255, 255, 0.46);
+      border: 1px solid rgba(255, 255, 255, 0.76);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 36px rgba(13, 27, 30, 0.10);
+      color: var(--teal);
+      font-size: 34px;
+      font-weight: 900;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      border-radius: 999px;
+      background: var(--mint-soft);
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      padding: 8px 12px;
+      white-space: nowrap;
+    }
+
+    .chip .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .chip.amber { background: var(--amber-soft); color: var(--amber); }
+    .chip.blue { background: var(--blue-soft); color: var(--blue); }
+    .chip.red { background: var(--red-soft); color: var(--red); }
+    .chip.muted { background: var(--surface-2); color: var(--muted); }
+
+    .button {
+      height: 52px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 850;
+      font-size: 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      color: var(--teal);
+    }
+
+    .button.primary {
+      color: var(--white);
+      background: var(--teal);
+      border-color: var(--teal);
+      box-shadow: 0 12px 22px rgba(13, 27, 30, 0.16);
+    }
+
+    .button.danger {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: #f4a79e;
+    }
+
+    .wave {
+      height: 76px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .wave span {
+      width: 7px;
+      border-radius: 999px;
+      background: var(--mint);
+      opacity: 0.78;
+    }
+
+    .wave span:nth-child(1) { height: 16px; }
+    .wave span:nth-child(2) { height: 32px; }
+    .wave span:nth-child(3) { height: 52px; }
+    .wave span:nth-child(4) { height: 70px; opacity: 1; }
+    .wave span:nth-child(5) { height: 46px; }
+    .wave span:nth-child(6) { height: 28px; }
+    .wave span:nth-child(7) { height: 58px; }
+    .wave span:nth-child(8) { height: 38px; }
+    .wave span:nth-child(9) { height: 22px; }
+
+    .nav {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 20px;
+      height: 68px;
+      border-radius: 28px;
+      background: rgba(255, 252, 244, 0.94);
+      box-shadow: 0 10px 22px rgba(13, 27, 30, 0.12);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 10px 8px;
+      gap: 4px;
+    }
+
+    .nav.dev-nav { grid-template-columns: repeat(5, 1fr); }
+
+    .nav-item {
+      border-radius: 22px;
+      text-align: center;
+      padding-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .nav-item::before {
+      content: "";
+      display: block;
+      margin: 0 auto 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .nav-item.active {
+      color: var(--ink);
+      background: var(--mint-soft);
+    }
+
+    .nav-item.active.dev-active {
+      background: var(--amber-soft);
+    }
+
+    .onboard-visual {
+      height: 236px;
+      margin-top: 42px;
+      display: grid;
+      place-items: center;
+    }
+
+    .earbuds {
+      width: 250px;
+      height: 250px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.10);
+      display: grid;
+      place-items: center;
+    }
+
+    .buds {
+      position: absolute;
+      width: 42px;
+      height: 84px;
+      border-radius: 24px;
+      background: var(--ink-2);
+    }
+
+    .buds.left { transform: translate(-60px, 28px); }
+    .buds.right { transform: translate(60px, 28px); }
+
+    .qr {
+      width: 112px;
+      height: 112px;
+      border-radius: 20px;
+      border: 1px solid rgba(15, 118, 110, 0.25);
+      background: #ecfdf3;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .qr span {
+      border-radius: 5px;
+      background: var(--teal);
+    }
+
+    .dark-panel {
+      background: var(--ink);
+      color: var(--white);
+      border-radius: 30px;
+      min-height: 194px;
+      box-shadow: 0 10px 24px rgba(13, 27, 30, 0.13);
+      padding: 34px 22px 20px;
+      text-align: center;
+    }
+
+    .dark-panel .subtle { color: #cbeadd; }
+
+    .hero-ready {
+      height: 250px;
+      border-radius: 32px;
+      background: var(--ink);
+      color: var(--white);
+      padding: 24px;
+      box-shadow: 0 18px 32px rgba(13, 27, 30, 0.18);
+    }
+
+    .hero-ready h2 {
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: -0.05em;
+      margin: 14px 0 0;
+    }
+
+    .hero-ready p {
+      color: #cfe7de;
+      font-size: 14px;
+      line-height: 1.45;
+      max-width: 280px;
+    }
+
+    .cap-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .notes {
+      grid-column: 1 / span 4;
+      min-height: 220px;
+      border-radius: 28px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 28px;
+      box-shadow: 0 10px 22px rgba(13, 27, 30, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">First launch: product promise before configuration.</div>
+      <div class="onboard-visual">
+        <div class="earbuds">
+          <div class="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="buds left"></div><div class="buds right"></div>
+        </div>
+      </div>
+      <h1 class="hero-title">Talk to your workspace through ordinary earbuds.</h1>
+      <p class="copy">Pair the desktop bridge, verify your earbuds, then speak short developer commands hands-free.</p>
+      <div class="grid-3">
+        <div class="card" style="--accent: var(--teal)"><h3>Pair</h3><p>Scan the bridge QR.</p></div>
+        <div class="card" style="--accent: var(--amber)"><h3>Verify</h3><p>Prove wake and STT.</p></div>
+        <div class="card" style="--accent: var(--blue)"><h3>Approve</h3><p>Risky actions pause.</p></div>
+      </div>
+      <div class="button primary" style="margin-top: 26px;">Pair your bridge</div>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Device owns pairing, setup, and hardware truth.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><h3>Earbuds not verified yet</h3><p>Connect your earbuds, then run setup to learn which controls are dependable on this phone.</p><div class="row" style="margin-top: 14px;"><span class="chip amber"><span class="dot"></span>Wake unverified</span><span class="chip muted"><span class="dot"></span>Speech unknown</span></div></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 24px;"><h3>Pair your desktop bridge</h3><p>Scan the QR from the DevPods bridge page, or paste the pairing link.</p><div class="row" style="margin-top: 20px;"><div class="qr"><span></span><span></span><span></span><span></span><span></span></div><div><div style="color: var(--red); font-weight: 850;">Not paired</div><p>Bridge page reachable on same Wi-Fi or USB reverse.</p><div class="button primary" style="height: 44px; margin-top: 12px;">Scan QR</div></div></div><div class="button" style="height: 38px; margin-top: 16px;">Import link</div></div>
+      <div class="button" style="margin-top: 36px;">Run guided setup</div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Full-screen guided setup replaces embedded debug wizard.</div>
+      <div style="margin-top: 20px; color: var(--teal); font-weight: 850; font-size: 13px;">Step 3 of 4</div>
+      <div style="height: 8px; border-radius: 999px; background: var(--surface-2); margin-top: 12px;"><div style="width: 75%; height: 8px; border-radius: 999px; background: var(--teal);"></div></div>
+      <h2 class="hero-title" style="margin-top: 28px;">Test the wake gesture</h2>
+      <p class="copy">When the timer starts, tap your earbuds once or twice. DevPods records whether a physical signal arrived and keeps claims conservative if it does not.</p>
+      <div class="dark-panel" style="margin-top: 48px;"><div class="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div style="font-size: 36px; font-weight: 850;">00:10</div><div class="subtle">Waiting for earbud signal</div></div>
+      <div class="button primary" style="margin-top: 40px;">Start 10-second wake test</div>
+      <div class="button" style="margin-top: 14px;">Use assistant fallback</div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Home answers: what state are we in, and what should I do next?</div>
+      <div class="hero-ready" style="margin-top: 20px;"><span class="chip"><span class="dot"></span>Ready</span><div class="wave" style="float:right; transform: scale(.72); transform-origin: top right; margin-top: -22px;"></div><h2>Ready to listen</h2><p>Tap your earbuds or use push-to-talk. Risky workspace actions will ask before continuing.</p></div>
+      <div class="row" style="margin: -42px 18px 0;"><div class="button primary" style="width: 146px;">Listen now</div><div class="button" style="width: 146px;">Check bridge</div></div>
+      <div class="row" style="flex-wrap: wrap; margin-top: 30px;"><span class="chip"><span class="dot"></span>Bridge reachable</span><span class="chip amber"><span class="dot"></span>Earbud wake observed</span><span class="chip"><span class="dot"></span>Speech ready</span><span class="chip blue"><span class="dot"></span>Using earbuds mic</span></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 28px;"><h3>Latest session</h3><p>You asked: “show status”. DevPods replied: “Two files changed. Tests are idle.”</p><div class="button" style="height: 36px; width: 132px; margin-top: 16px;">View activity</div></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Approvals are global, visible, and consequence-led.</div>
+      <div class="card" style="--accent: var(--red); background: var(--red-soft); border-color: #f4a79e; margin-top: 18px;"><span class="chip red"><span class="dot"></span>Hard approval</span><h3 style="margin-top: 18px;">Review requested action</h3><p style="color: var(--ink);">Run the test suite in this workspace. This may execute local tools and can take a few minutes.</p><div class="row" style="margin-top: 22px;"><div class="button primary" style="width: 130px; height: 42px;">Approve</div><div class="button danger" style="width: 130px; height: 42px;">Reject</div></div></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 32px;"><h3>Conversation</h3><p>Transcript: “run tests”<br>Spoken reply: “Run workspace tests? Tap right twice to approve.”</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Timeline</h3><p>Wake received → Listening started → Transcript captured → Approval requested</p></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item active">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Capability claims are evidence-based and user-readable.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><h3>Buds Air7 via Android media controls</h3><p>Connected. Direct BLE controls are not proven, so the assistant fallback remains visible.</p></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 28px;"><h3>Capability summary</h3>
+        <div class="cap-row"><span>Wake from earbuds</span><span class="chip amber">Observed</span></div>
+        <div class="cap-row"><span>Interrupt during reply</span><span class="chip amber">Observed</span></div>
+        <div class="cap-row"><span>Approve by gesture</span><span class="chip muted">Not yet proven</span></div>
+        <div class="cap-row"><span>In-ear detection</span><span class="chip red">Unsupported</span></div>
+        <div class="cap-row"><span>Battery reporting</span><span class="chip red">Unsupported</span></div>
+        <div class="cap-row"><span>Speech after wake</span><span class="chip amber">Observed</span></div>
+      </div>
+      <div class="row" style="margin-top: 24px;"><div class="button primary" style="width: 162px;">Retest device</div><div class="button" style="width: 164px;">Pairing details</div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Recovery is a core product surface, not an engineering afterthought.</div>
+      <div class="card" style="--accent: var(--red); background: var(--red-soft); border-color: #f4a79e; margin-top: 20px;"><h3 style="color: var(--red);">Bridge unreachable</h3><p style="color: var(--ink);">Make sure your computer and phone are on the same network, then retry.</p><div class="button primary" style="width: 128px; height: 34px; margin-top: 16px;">Retry bridge</div></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 32px;"><h3>Recovery actions</h3><p>Open pairing help<br>Repair microphone permission<br>Use phone microphone fallback</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Permissions</h3><p>Microphone allowed · Notifications allowed · Speech engine available</p></div>
+      <div class="row" style="margin-top: 26px;"><div class="button" style="width: 164px;">Export diagnostics</div><div class="button" style="width: 164px;">Enable Dev mode</div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item active">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode dev">Developer mode</div></div>
+      <div class="note">Developer Mode keeps QA controls without polluting Standard Mode.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><h3>Bridge configuration</h3><p>Base URL: http://192.168.1.10:4545<br>Token: hidden by default<br>Workspace: current_repo</p></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 26px;"><h3>Relay controls</h3><div class="row" style="flex-wrap: wrap; margin-top: 18px;"><div class="button" style="height: 28px; width: 132px;">Permissions</div><div class="button primary" style="height: 28px; width: 132px;">Start</div><div class="button" style="height: 28px; width: 132px;">Stop</div><div class="button" style="height: 28px; width: 132px;">Health</div><div class="button" style="height: 28px; width: 132px;">Status</div><div class="button" style="height: 28px; width: 132px;">PTT</div><div class="button" style="height: 28px; width: 132px;">Speaker</div><div class="button" style="height: 28px; width: 132px;">Tap Test</div></div></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 26px;"><h3>Raw state summary</h3><p>bridgeStatus: Healthy · brain=local<br>audioRoute: BT headset active<br>lastWake: android_media_session<br>latency: health 34ms, bridge 118ms</p></div>
+      <nav class="nav dev-nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div><div class="nav-item active dev-active">Dev</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Natural flow: the app should always show the next best step.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px;"><h3>Start here</h3><p>First launch moves from onboarding into pairing, then setup, then Home. Recovery states branch without sending the user into Dev mode.</p>
+        <div class="flow-strip">
+          <div class="flow-node active">1 Pair bridge</div>
+          <div class="flow-node">2 Run setup</div>
+          <div class="flow-node">3 Ready</div>
+          <div class="flow-node">4 Recover</div>
+        </div>
+      </div>
+      <div class="card" style="--accent: var(--amber); margin-top: 24px;"><h3>If anything blocks</h3><p>Show the repair card exactly where the user is: queue retry on Home, approval sheet in Activity, bridge management in Device, settings in Help.</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Daily return path</h3><p>Returning users land on Home with one state, one primary action, and a session preview. No raw bridge console unless Dev mode is enabled.</p></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Autonomy and background continuation need visible trust controls.</div>
+      <div class="card" style="--accent: var(--blue); margin-top: 20px;"><span class="chip blue"><span class="dot"></span>Assistant working</span><h3 style="margin-top: 16px;">Continuing after silence</h3><p>DevPods is checking the failing test and will continue unless you interrupt.</p>
+        <div class="row" style="justify-content: space-between; margin-top: 20px;">
+          <div>
+            <div style="font-weight: 850;">Next step</div>
+            <span class="detail-copy">Open latest CI failure summary</span>
+          </div>
+          <div class="countdown">10s</div>
+        </div>
+        <div class="row" style="margin-top: 18px;"><div class="button danger" style="width: 132px; height: 42px;">Stop</div><div class="button" style="width: 150px; height: 42px;">View activity</div></div>
+      </div>
+      <div class="card" style="--accent: var(--teal); margin-top: 24px;"><h3>Interrupt path</h3><p>Tap earbuds or press Stop to cancel the continuation. The UI confirms the cancellation and logs it in Activity.</p></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Offline queue state: visible, retryable, and discardable.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><span class="chip amber"><span class="dot"></span>Bridge reconnecting</span><h3 style="margin-top: 16px;">2 commands queued</h3><p>DevPods saved your latest requests because the desktop bridge is unreachable.</p>
+        <div class="queue-meter"><span></span></div>
+        <div class="detail-row"><div>Retrying in<span class="detail-copy">5 seconds, attempt 2 of 5</span></div><strong>00:05</strong></div>
+        <div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Retry now</div><div class="button danger" style="width: 132px; height: 42px;">Discard</div></div>
+      </div>
+      <div class="card" style="--accent: var(--teal); margin-top: 24px;"><h3>After reconnect</h3><p>Show whether queued commands were sent, skipped, or need a fresh approval before execution.</p></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Approval detail sheet maps the real risk and expiry model.</div>
+      <div class="sheet" style="margin-top: 18px;">
+        <div class="grabber"></div>
+        <span class="chip red"><span class="dot"></span>Hard approval</span>
+        <h2 style="font-size: 28px; line-height: 1.05; letter-spacing: -0.05em; margin: 18px 0 0;">Approve branch push?</h2>
+        <p class="copy" style="font-size: 14px;">This will push the current branch to the configured remote. It may publish code outside this machine.</p>
+        <div class="risk-grid">
+          <div class="risk-cell"><strong>Action</strong>branch_push</div>
+          <div class="risk-cell"><strong>Risk</strong>hard</div>
+          <div class="risk-cell"><strong>Expires</strong>08s</div>
+        </div>
+        <div class="detail-row"><div>Consequence<span class="detail-copy">Remote repository receives your branch updates.</span></div></div>
+        <div class="detail-row"><div>Gesture<span class="detail-copy">Right double tap approves, left double tap rejects.</span></div></div>
+        <div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 44px;">Approve</div><div class="button danger" style="width: 132px; height: 44px;">Reject</div></div>
+      </div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item active">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Setup lifecycle states: resume, complete, skip, and reset.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><span class="chip amber"><span class="dot"></span>Setup paused</span><h3 style="margin-top: 16px;">Resume wake test</h3><p>You paired the bridge, but did not finish device verification.</p><div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Resume</div><div class="button" style="width: 132px; height: 42px;">Skip for now</div></div></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 24px;"><span class="chip"><span class="dot"></span>Setup complete</span><h3 style="margin-top: 16px;">Ready with fallback</h3><p>Wake is observed through Android media controls. Assistant fallback stays visible until direct controls are proven.</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Setup tools</h3><p>Reset saved profile, re-run setup, or view capability details.</p><div class="row" style="margin-top: 16px;"><div class="button" style="width: 132px; height: 42px;">Re-run</div><div class="button danger" style="width: 132px; height: 42px;">Reset</div></div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Bridge management beyond initial pairing.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px;"><h3>Paired bridge</h3><p>Desktop bridge at 192.168.1.10. Last health check succeeded 34 seconds ago.</p>
+        <div class="check-row"><span>Bridge running</span><span class="chip">OK</span></div>
+        <div class="check-row"><span>Same network</span><span class="chip">OK</span></div>
+        <div class="check-row"><span>Protocol version</span><span class="chip amber">Update soon</span></div>
+      </div>
+      <div class="card" style="--accent: var(--amber); margin-top: 24px;"><h3>Pairing issue</h3><p>This pairing code expired. Re-open the desktop pairing page and scan again.</p><div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Re-pair</div><div class="button danger" style="width: 132px; height: 42px;">Forget</div></div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Settings and fallback controls are first-class Help surfaces.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px;"><h3>Listening fallbacks</h3><p>Use these when Bluetooth routing or direct wake is unreliable.</p>
+        <div class="toggle-row"><div>Bluetooth mic routing<span class="toggle-copy">Prefer earbud microphone when available.</span></div><span class="switch"></span></div>
+        <div class="toggle-row"><div>Phone microphone fallback<span class="toggle-copy">Use phone mic if headset route fails.</span></div><span class="switch"></span></div>
+        <div class="toggle-row"><div>Assistant long-press fallback<span class="toggle-copy">Open DevPods through the system assistant gesture.</span></div><span class="switch"></span></div>
+      </div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Speech and output</h3><p>Test speaker, change voice route, and repair speech engine availability.</p><div class="row" style="margin-top: 16px;"><div class="button" style="width: 132px; height: 42px;">Test voice</div><div class="button" style="width: 132px; height: 42px;">Repair mic</div></div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item active">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Permission, scan failure, and diagnostics preview modal states.</div>
+      <div class="modal-layer" style="margin-top: 20px;">
+        <div class="modal-card">
+          <span class="chip red"><span class="dot"></span>Permission needed</span>
+          <h3 style="margin-top: 16px;">Allow microphone access</h3>
+          <p class="copy" style="font-size: 13px;">DevPods needs microphone access to capture your command after a wake gesture. You can still pair the bridge without it.</p>
+          <div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Open settings</div><div class="button" style="width: 132px; height: 42px;">Not now</div></div>
+        </div>
+      </div>
+      <div class="card" style="--accent: var(--blue); margin-top: 22px;"><h3>Diagnostics preview</h3><p>Share redacted phone model, readiness, capability status, and recent error categories. Tokens and bridge URLs stay hidden.</p><div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Share</div><div class="button" style="width: 132px; height: 42px;">Preview</div></div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item active">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Foreground notification controls for the background relay.</div>
+      <div class="notification-card" style="margin-top: 20px;">
+        <div class="notification-top"><span>DevPods Relay active</span><span>now</span></div>
+        <h3 style="margin: 16px 0 0;">Listening for headset controls</h3>
+        <p class="copy" style="font-size: 13px;">Bridge reachable. Earbuds connected. Current action can be stopped from here.</p>
+        <div class="notification-actions">
+          <div class="mini-action">Push<br>to talk</div>
+          <div class="mini-action">Retry<br>bridge</div>
+          <div class="mini-action danger">Cancel<br>action</div>
+          <div class="mini-action danger">Stop<br>relay</div>
+        </div>
+      </div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Lock-screen promise</h3><p>The notification should mirror the safest controls: stop, retry, cancel active work, and quick push-to-talk.</p></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Dedicated QR scanning failure and invalid-code states.</div>
+      <div class="scan-window" style="margin-top: 20px;"><div class="scan-corners"></div></div>
+      <div class="card" style="--accent: var(--red); margin-top: -52px;"><span class="chip red"><span class="dot"></span>Scan failed</span><h3 style="margin-top: 16px;">QR code not recognized</h3><p>Make sure the desktop pairing page is open, brightness is high, and the QR is inside the frame.</p><div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Scan again</div><div class="button" style="width: 132px; height: 42px;">Paste link</div></div></div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><h3>Invalid or expired code</h3><p>Re-open the bridge pairing page to generate a fresh pairing code.</p></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Compatibility/update panel for app and bridge drift.</div>
+      <div class="card" style="--accent: var(--amber); margin-top: 20px;"><span class="chip amber"><span class="dot"></span>Update recommended</span><h3 style="margin-top: 16px;">Bridge is behind the app</h3><p>Some relay features need bridge protocol 0.3.0 or newer.</p>
+        <div class="compat-row"><span>Android app</span><span class="chip">0.1.0</span></div>
+        <div class="compat-row"><span>Desktop bridge</span><span class="chip amber">0.2.4</span></div>
+        <div class="compat-row"><span>Protocol</span><span class="chip red">Mismatch</span></div>
+        <div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Update guide</div><div class="button" style="width: 132px; height: 42px;">Continue</div></div>
+      </div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item active">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Diagnostics consent should be granular before sharing.</div>
+      <div class="card" style="--accent: var(--blue); margin-top: 20px;"><h3>Share diagnostics</h3><p>Choose what support can see. Tokens, bridge URLs, workspace names, and identifiers stay redacted.</p>
+        <div class="checkbox-row"><span class="checkbox">✓</span><div>Include phone model<span class="toggle-copy">Example: RMX3990, Android 16.</span></div></div>
+        <div class="checkbox-row"><span class="checkbox">✓</span><div>Include capability matrix<span class="toggle-copy">Wake, STT, approval, battery support status.</span></div></div>
+        <div class="checkbox-row"><span class="checkbox">✓</span><div>Include recent error categories<span class="toggle-copy">Error types, not raw secrets or URLs.</span></div></div>
+        <div class="checkbox-row"><span class="checkbox off">✓</span><div>Include raw route detail<span class="toggle-copy">Off by default for privacy.</span></div></div>
+        <div class="row" style="margin-top: 16px;"><div class="button primary" style="width: 132px; height: 42px;">Share</div><div class="button" style="width: 132px; height: 42px;">Preview</div></div>
+      </div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item active">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Accessibility and localization readiness before implementation.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px;"><h3>Accessibility</h3><p>Readable text, visible focus, screen-reader labels, reduced motion, and 44px+ touch targets.</p>
+        <div class="check-row"><span>Large text preview</span><span class="chip">Ready</span></div>
+        <div class="check-row"><span>Reduced motion</span><span class="chip">Supported</span></div>
+        <div class="check-row"><span>Screen reader labels</span><span class="chip amber">Needs pass</span></div>
+      </div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>Localization</h3><p>Copy should move to string resources and allow longer translations without breaking cards.</p><div class="row" style="margin-top: 14px;"><span class="chip">English</span><span class="chip muted">Future locales</span></div></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item active">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Empty states and success confirmations make the flow feel complete.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px; text-align: center;"><div class="empty-glyph">✓</div><h3>No approvals pending</h3><p>When DevPods needs your confirmation, the request appears here and on Home.</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>No recent activity yet</h3><p>Wake DevPods or tap Push-to-talk. Your transcript, spoken reply, and timeline will appear here.</p></div>
+      <div class="card" style="--accent: var(--teal); margin-top: 24px;"><h3>Diagnostics exported</h3><p>Redacted support report shared successfully. You can review the payload anytime before sending.</p></div>
+      <nav class="nav"><div class="nav-item">Home</div><div class="nav-item active">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="phone">
+      <div class="status"><span>12:41</span><span class="battery"><span></span></span></div>
+      <div class="topbar"><div class="app-title">DevPods</div><div class="mode">Standard mode</div></div>
+      <div class="note">Queue success confirmation after bridge reconnection.</div>
+      <div class="card" style="--accent: var(--teal); margin-top: 20px; text-align: center;"><div class="empty-glyph">✓</div><h3>Queued actions sent</h3><p>2 saved commands reached the desktop bridge. Any risky action will still ask for approval before execution.</p></div>
+      <div class="card" style="--accent: var(--blue); margin-top: 24px;"><h3>What happened</h3><p>Status request sent · Test command needs approval · Bridge healthy again</p><div class="button" style="height: 42px; width: 150px; margin-top: 16px;">View activity</div></div>
+      <nav class="nav"><div class="nav-item active">Home</div><div class="nav-item">Activity</div><div class="nav-item">Device</div><div class="nav-item">Help</div></nav>
+    </section>
+
+    <section class="notes">
+      <h2>DevPods Relay UI Prototype</h2>
+      <p class="copy">Built from <code>docs/17-end-user-developer-mobile-ui-spec.md</code>. Visual direction: Material 3 structure with transparent liquid-glass components, calm technical audio-control feel, user-first Standard Mode with Dev Mode progressively disclosed. This version adds explicit UX state coverage for settings, offline queue, autonomy, approval details, setup lifecycle, bridge management, permissions, diagnostics, notification controls, QR failure, compatibility, accessibility, localization, empty states, and success confirmations.</p>
+      <div class="row" style="flex-wrap: wrap; margin-top: 28px;">
+        <span class="chip">Home = product state</span>
+        <span class="chip">Activity = transcript + approvals</span>
+        <span class="chip">Device = pairing + capability truth</span>
+        <span class="chip">Help = recovery + diagnostics</span>
+        <span class="chip amber">Dev = operator console</span>
+        <span class="chip blue">State screens = trust and recovery</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

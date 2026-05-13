@@ -8,6 +8,54 @@ data class RelayAudioDeviceDescriptor(
 )
 
 object RelayAudioDeviceCatalog {
+    fun isCommunicationCaptureDevice(device: RelayAudioDeviceDescriptor?): Boolean {
+        if (device == null) {
+            return false
+        }
+
+        return device.type in setOf(
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+        )
+    }
+
+    fun communicationRouteStatus(
+        currentCommunicationDevice: RelayAudioDeviceDescriptor?,
+        discoveredDevices: List<RelayAudioDeviceDescriptor>,
+        routeRequested: Boolean? = null,
+    ): String {
+        val hasNamedBluetoothOutput = discoveredDevices.any(::isNamedBluetoothOutput)
+
+        if (currentCommunicationDevice == null) {
+            return when {
+                routeRequested == false -> "Route request failed"
+                hasNamedBluetoothOutput -> "Headset output is visible, but no communication microphone route is active"
+                else -> "No active communication route"
+            }
+        }
+
+        if (isCommunicationCaptureDevice(currentCommunicationDevice)) {
+            return if (routeRequested == true) {
+                "Headset microphone route ready"
+            } else {
+                "Communication device selected"
+            }
+        }
+
+        if (hasNamedBluetoothOutput) {
+            return "Headset output is visible, but the microphone route stayed on built-in audio"
+        }
+
+        return if (routeRequested == false) {
+            "Route request failed"
+        } else {
+            "Communication route is using built-in audio"
+        }
+    }
+
     fun availableDeviceSummary(
         communicationDevices: List<RelayAudioDeviceDescriptor>,
         discoveredDevices: List<RelayAudioDeviceDescriptor>,

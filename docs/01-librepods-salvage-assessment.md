@@ -11,7 +11,7 @@ Short answer:
 - LibrePods is valuable as a reverse-engineering and host-control reference.
 - LibrePods is not a firmware base for your product.
 - The highest-value reuse is architectural pattern reuse and protocol-learning, not blind code reuse.
-- Direct code reuse has a licensing cost because LibrePods is GPLv3.
+- 
 
 ## What LibrePods Actually Is
 
@@ -49,12 +49,12 @@ LibrePods declares GPLv3 in the repository and in source headers such as [librep
 That creates a hard decision:
 
 - If you copy or derive code, assume your derivative distribution must be GPL-compatible.
-- If you want maximum flexibility for a commercial or mixed-license product, use LibrePods as a research reference and do a clean-room rewrite.
+- If you want maximum flexibility for a commercial or  product, use LibrePods as a research reference and do a clean-room rewrite.
 
 Recommended posture for now:
 
 - Treat LibrePods as inspiration, protocol notes, and implementation reference.
-- Avoid copying production code into your new project unless you intentionally accept GPL obligations.
+- 
 
 ## Reuse Matrix
 

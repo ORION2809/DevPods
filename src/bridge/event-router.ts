@@ -29,6 +29,7 @@ export class EventRouter {
       status: 'acknowledged',
       actionId: request.pendingActionId,
       detail: request.utterance,
+      hardwareContext: request.hardwareContext,
     });
 
     switch (request.event) {
@@ -125,7 +126,7 @@ export class EventRouter {
     workspace: ReturnType<typeof resolveWorkspace>,
     intent: IntentName,
   ): Promise<JarvisResponse> {
-    const decision = evaluateIntentPolicy(intent, workspace);
+    const decision = evaluateIntentPolicy(intent, workspace, request.hardwareContext, request.gesture);
 
     if (!decision.allowed) {
       this.sessionStore.clearAutonomy(request.sessionId);
@@ -228,7 +229,7 @@ export class EventRouter {
       ...request,
       event: 'voice_command',
     });
-    const decision = evaluateIntentPolicy(intent, workspace);
+    const decision = evaluateIntentPolicy(intent, workspace, request.hardwareContext, request.gesture);
     if (!decision.allowed) {
       this.sessionStore.clearAutonomy(request.sessionId);
       this.sessionStore.setState(request.sessionId, 'idle');
@@ -368,6 +369,7 @@ export class EventRouter {
       status: response.status,
       actionId: response.actionId,
       detail: response.display,
+      hardwareContext: request.hardwareContext,
     });
 
     return response;

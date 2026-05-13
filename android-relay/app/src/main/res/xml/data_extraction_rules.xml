@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Conservative data-extraction rules for Android 12+ (API 31+).
+     Disables cloud backup and device-to-device transfer of all app data
+     to prevent leakage of pairing tokens, session state, or audio metadata. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

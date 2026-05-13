@@ -20,6 +20,7 @@ export function buildBridgeRequest(event: EarbudEvent, workspace: WorkspaceConfi
       batteryPercent: event.battery ?? null,
       profile: event.profile ?? null,
     },
+    hardwareContext: event.hardwareContext ?? null,
   });
 }
 

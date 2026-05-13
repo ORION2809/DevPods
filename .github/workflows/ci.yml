@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  bridge:
+    name: Bridge (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Audit (informational)
+        run: npm audit || true
+
+      - name: Audit allowlist enforcement
+        run: npm run audit:allowlist
+
+  android:
+    name: Android Relay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android-relay/gradlew
+
+      - name: Assemble debug
+        working-directory: android-relay
+        run: ./gradlew :app:assembleDebug
+
+      - name: Run unit tests
+        working-directory: android-relay
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Run lint
+        working-directory: android-relay
+        run: ./gradlew :app:lintDebug
+
+  windows-package:
+    name: Windows Bridge Package
+    runs-on: windows-latest
+    needs: bridge
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bridge
+        run: npm run build
+
+      - name: Package Windows bridge
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\packaging\windows\package-bridge.ps1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devpods-bridge-windows
+          path: artifacts/windows-bridge/DevPodsBridgePortable

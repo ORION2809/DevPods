@@ -148,4 +148,77 @@ describe('protocol schemas', () => {
       },
     })).toThrow();
   });
+
+  it('validates an earbud event with hardware context', () => {
+    const parsed = earbudEventSchema.parse({
+      source: 'android_relay',
+      sessionId: 'android_sess_hw',
+      workspace: 'current_repo',
+      device: 'both_buds',
+      event: 'headset_button_single',
+      timestamp: Date.now(),
+      hardwareContext: {
+        provider: 'librepods_airpods',
+        wakeSource: 'right_single_press',
+        deviceConfidence: 'proven',
+        earState: 'both_in_ear',
+        batteryState: 'ok',
+        deviceModel: 'AirPods Pro 2',
+        connectionState: 'connected',
+      },
+    });
+
+    expect(parsed.hardwareContext?.provider).toBe('librepods_airpods');
+    expect(parsed.hardwareContext?.deviceConfidence).toBe('proven');
+    expect(parsed.hardwareContext?.earState).toBe('both_in_ear');
+  });
+
+  it('defaults hardware context fields when omitted', () => {
+    const parsed = earbudEventSchema.parse({
+      source: 'android_relay',
+      sessionId: 'android_sess_min',
+      workspace: 'current_repo',
+      device: 'both_buds',
+      event: 'android_push_to_talk',
+      timestamp: Date.now(),
+    });
+
+    expect(parsed.hardwareContext).toBeUndefined();
+  });
+
+  it('validates a bridge request with hardware context', () => {
+    const parsed = bridgeRequestSchema.parse({
+      source: 'android_relay',
+      sessionId: 'sess_hw',
+      workspace: 'current_repo',
+      event: 'voice_command',
+      utterance: 'run tests',
+      gesture: 'headset_button_single',
+      riskPolicy: {
+        profile: 'default',
+        allowReadOnly: true,
+        allowSafeWithoutApproval: true,
+        requireApprovalFor: [],
+        requireHardApprovalFor: [],
+        approvalTimeoutMs: 12000,
+      },
+      pendingActionId: null,
+      approvalAction: null,
+      deviceState: {
+        activeBud: 'both',
+        wearState: 'in_ear',
+        batteryPercent: 80,
+        profile: 'default',
+      },
+      hardwareContext: {
+        provider: 'android_media_session',
+        deviceConfidence: 'observed',
+        earState: 'in_ear',
+        batteryState: 'ok',
+      },
+    });
+
+    expect(parsed.hardwareContext?.provider).toBe('android_media_session');
+    expect(parsed.hardwareContext?.wakeSource).toBeNull();
+  });
 });

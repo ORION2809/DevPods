@@ -12,6 +12,10 @@ import {
   type OpenClawRewriteHealthSnapshot,
 } from '../openclaw/client';
 import { preflightOpenClawOptions } from '../openclaw/validation';
+import { classifyError } from './error-handler';
+
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_RESET_MS = 30_000;
 
 export interface BridgeRuntimeOptions {
   configPath?: string;
@@ -34,6 +38,9 @@ function syncSessionResponse(sessionStore: SessionStore, sessionId: string, resp
 }
 
 export class BridgeRuntime {
+  private consecutiveFailures = 0;
+  private degradedSince: number | null = null;
+
   constructor(
     readonly eventRouter: EventRouter,
     private readonly sessionStore: SessionStore,
@@ -45,19 +52,67 @@ export class BridgeRuntime {
     return this.openclawClient?.getHealthSnapshot() ?? null;
   }
 
-  async handleEvent(event: EarbudEvent) {
-    this.sessionStore.setSource(event.sessionId, event.source);
-    const response = await this.eventRouter.dispatch(event);
-    const finalResponse = await this.openclawClient?.rewriteResponse({
-      response,
-      event,
-      source: 'foreground',
-    }) ?? response;
-    syncSessionResponse(this.sessionStore, event.sessionId, finalResponse);
-    if (event.source !== 'android_relay') {
-      await this.notifier.notify(finalResponse);
+  getHealthStatus(): { degraded: boolean; since: string | null } {
+    return {
+      degraded: this.degradedSince !== null,
+      since: this.degradedSince ? new Date(this.degradedSince).toISOString() : null,
+    };
+  }
+
+  isDegraded(): boolean {
+    return this.degradedSince !== null;
+  }
+
+  async handleEvent(event: EarbudEvent): Promise<JarvisResponse> {
+    if (this.degradedSince !== null && Date.now() - this.degradedSince > CIRCUIT_BREAKER_RESET_MS) {
+      this.degradedSince = null;
+      this.consecutiveFailures = 0;
     }
-    return finalResponse;
+
+    if (this.isDegraded()) {
+      return {
+        speak: 'Bridge is currently in degraded mode. Please try again shortly.',
+        display: 'The bridge is experiencing issues and has entered degraded mode.',
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'error',
+        nextState: 'idle',
+        followUpHint: null,
+      };
+    }
+
+    try {
+      this.sessionStore.setSource(event.sessionId, event.source);
+      const response = await this.eventRouter.dispatch(event);
+      const finalResponse = await this.openclawClient?.rewriteResponse({
+        response,
+        event,
+        source: 'foreground',
+      }) ?? response;
+      syncSessionResponse(this.sessionStore, event.sessionId, finalResponse);
+      if (event.source !== 'android_relay') {
+        await this.notifier.notify(finalResponse);
+      }
+      this.consecutiveFailures = 0;
+      return finalResponse;
+    } catch (error) {
+      this.consecutiveFailures += 1;
+      if (this.consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        this.degradedSince = Date.now();
+      }
+      const classified = classifyError(error);
+      return {
+        speak: classified.userMessage,
+        display: classified.userMessage,
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'error',
+        nextState: 'idle',
+        followUpHint: null,
+      };
+    }
   }
 }
 

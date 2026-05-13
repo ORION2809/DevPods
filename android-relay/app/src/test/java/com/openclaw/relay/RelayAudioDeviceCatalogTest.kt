@@ -2,6 +2,7 @@ package com.openclaw.relay
 
 import android.media.AudioDeviceInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -84,5 +85,60 @@ class RelayAudioDeviceCatalogTest {
             "Phone earpiece",
             RelayAudioDeviceCatalog.describeDeviceType(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE),
         )
+    }
+
+    @Test
+    fun `speech capture readiness only accepts communication-capable headset routes`() {
+        assertTrue(
+            RelayAudioDeviceCatalog.isCommunicationCaptureDevice(
+                RelayAudioDeviceDescriptor(
+                    type = AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                    productName = "realme Buds Air7",
+                ),
+            ),
+        )
+        assertTrue(
+            RelayAudioDeviceCatalog.isCommunicationCaptureDevice(
+                RelayAudioDeviceDescriptor(
+                    type = AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                    productName = "USB-C headset",
+                ),
+            ),
+        )
+        assertFalse(
+            RelayAudioDeviceCatalog.isCommunicationCaptureDevice(
+                RelayAudioDeviceDescriptor(
+                    type = AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    productName = "realme Buds Air7",
+                ),
+            ),
+        )
+        assertFalse(
+            RelayAudioDeviceCatalog.isCommunicationCaptureDevice(
+                RelayAudioDeviceDescriptor(
+                    type = AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+                    productName = "RMX3990",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `communication route status reports built in fallback when bluetooth output is visible`() {
+        val status = RelayAudioDeviceCatalog.communicationRouteStatus(
+            currentCommunicationDevice = RelayAudioDeviceDescriptor(
+                type = AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+                productName = "RMX3990",
+            ),
+            discoveredDevices = listOf(
+                RelayAudioDeviceDescriptor(
+                    type = AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                    productName = "realme Buds Air7",
+                ),
+            ),
+            routeRequested = true,
+        )
+
+        assertEquals("Headset output is visible, but the microphone route stayed on built-in audio", status)
     }
 }

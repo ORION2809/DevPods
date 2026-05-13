@@ -7,7 +7,60 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 
-class AndroidSpeechRecognizer(context: Context) {
+internal data class SpeechRecognitionFailure(
+    val message: String,
+    val shouldResetSession: Boolean,
+)
+
+internal fun classifySpeechRecognizerError(error: Int): SpeechRecognitionFailure {
+    return when (error) {
+        SpeechRecognizer.ERROR_AUDIO -> SpeechRecognitionFailure(
+            message = "Microphone error. Check audio permissions and the active communication route.",
+            shouldResetSession = true,
+        )
+
+        SpeechRecognizer.ERROR_CLIENT -> SpeechRecognitionFailure(
+            message = "Speech recognition client error. Resetting the microphone session for the next attempt.",
+            shouldResetSession = true,
+        )
+
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> SpeechRecognitionFailure(
+            message = "Microphone permission is missing.",
+            shouldResetSession = false,
+        )
+
+        SpeechRecognizer.ERROR_NETWORK,
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+        -> SpeechRecognitionFailure(
+            message = "Speech recognition network error. Check connectivity.",
+            shouldResetSession = false,
+        )
+
+        SpeechRecognizer.ERROR_NO_MATCH,
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+        -> SpeechRecognitionFailure(
+            message = "No speech was detected. Try again.",
+            shouldResetSession = false,
+        )
+
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> SpeechRecognitionFailure(
+            message = "Speech recognition was still busy. Resetting the microphone session for the next attempt.",
+            shouldResetSession = true,
+        )
+
+        SpeechRecognizer.ERROR_SERVER -> SpeechRecognitionFailure(
+            message = "Speech recognition server error.",
+            shouldResetSession = false,
+        )
+
+        else -> SpeechRecognitionFailure(
+            message = "Speech recognition failed with error code $error.",
+            shouldResetSession = false,
+        )
+    }
+}
+
+internal class AndroidSpeechRecognizer(context: Context) {
     private val appContext = context.applicationContext
     private var speechRecognizer: SpeechRecognizer? = null
 
@@ -16,10 +69,15 @@ class AndroidSpeechRecognizer(context: Context) {
     fun startListening(
         onPartialTranscript: (String) -> Unit,
         onFinalTranscript: (String) -> Unit,
-        onError: (String) -> Unit,
+        onError: (SpeechRecognitionFailure) -> Unit,
     ) {
         if (!isRecognitionAvailable()) {
-            onError("Speech recognition is unavailable on this device.")
+            onError(
+                SpeechRecognitionFailure(
+                    message = "Speech recognition is unavailable on this device.",
+                    shouldResetSession = false,
+                ),
+            )
             return
         }
 
@@ -39,20 +97,12 @@ class AndroidSpeechRecognizer(context: Context) {
             override fun onEndOfSpeech() = Unit
 
             override fun onError(error: Int) {
-                onError(
-                    when (error) {
-                        SpeechRecognizer.ERROR_AUDIO -> "Microphone error. Check audio permissions and device routing."
-                        SpeechRecognizer.ERROR_CLIENT -> "Speech recognition client error. Try again."
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is missing."
-                        SpeechRecognizer.ERROR_NETWORK,
-                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition network error. Check connectivity."
-                        SpeechRecognizer.ERROR_NO_MATCH,
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech was detected. Try again."
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognition is already active."
-                        SpeechRecognizer.ERROR_SERVER -> "Speech recognition server error."
-                        else -> "Speech recognition failed with error code $error."
-                    },
-                )
+                val failure = classifySpeechRecognizerError(error)
+                if (failure.shouldResetSession) {
+                    destroyRecognizer()
+                }
+
+                onError(failure)
             }
 
             override fun onResults(results: Bundle?) {
@@ -95,7 +145,15 @@ class AndroidSpeechRecognizer(context: Context) {
         speechRecognizer?.stopListening()
     }
 
+    fun resetSession() {
+        destroyRecognizer()
+    }
+
     fun destroy() {
+        destroyRecognizer()
+    }
+
+    private fun destroyRecognizer() {
         speechRecognizer?.destroy()
         speechRecognizer = null
     }

@@ -277,6 +277,10 @@ describe('DevPods CLI OpenClaw mode', () => {
     try {
       await expect(readHealthPayload(address.port)).resolves.toEqual({
         ok: true,
+        bridgeVersion: '1.0.0',
+        protocolVersion: 1,
+        minAppVersion: '1.0.0',
+        features: ['pairing_code', 'health_check', 'event_routing', 'approval_gates', 'autonomy', 'openclaw_rewrite'],
         brainMode: 'openclaw',
         openclawTransport: 'http',
         openclawRewritePolicy: 'always',
@@ -294,6 +298,7 @@ describe('DevPods CLI OpenClaw mode', () => {
           lastOutcome: null,
         },
         openclawReady: true,
+        degraded: false,
       });
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

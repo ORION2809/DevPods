@@ -3,12 +3,24 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Debug-only boundary: cleartext traffic is only permitted in debug builds via
+         src/debug/res/xml/network_security_config.xml for emulator/trusted-LAN testing.
+         Release builds have no debug receivers and no cleartext allowances. -->
+
+    <permission
+        android:name="com.openclaw.relay.permission.BIND_RELAY_SERVICE"
+        android:protectionLevel="signature" />
 
     <application
            android:allowBackup="false"
@@ -16,7 +28,9 @@
         android:label="@string/app_name"
         android:roundIcon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
-           android:theme="@style/Theme.OpenClawRelay">
+           android:theme="@style/Theme.OpenClawRelay"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
 
         <activity
             android:name=".MainActivity"
@@ -26,6 +40,17 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="pair"
+                    android:scheme="devpods" />
             </intent-filter>
         </activity>
 
@@ -49,7 +74,8 @@
             android:name=".RelayService"
             android:enabled="true"
             android:exported="true"
-            android:foregroundServiceType="microphone|mediaPlayback">
+            android:foregroundServiceType="microphone|mediaPlayback"
+            android:permission="com.openclaw.relay.permission.BIND_RELAY_SERVICE">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>

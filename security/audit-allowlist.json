@@ -1,0 +1,20 @@
+{
+  "$schema": "./audit-allowlist.schema.json",
+  "version": 1,
+  "updated": "2026-05-11",
+  "owner": "security@devpods.local",
+  "exceptions": [
+    {
+      "id": "GHSA-3q49-cfcf-g5fm",
+      "package": "@mistralai/mistralai",
+      "severity": "critical",
+      "title": "Malware in @mistralai/mistralai",
+      "allowedVersion": "2.2.1",
+      "installedVersionPath": "node_modules/@mistralai/mistralai/package.json",
+      "expiresAt": "2026-08-10",
+      "rationale": "The installed 2.2.1 predates the May 11 2026 compromise by ~3 weeks. The advisory incorrectly flags all versions >=0. The vulnerable path is only loaded when OpenClaw mode is explicitly enabled. Monitored upstream for corrected version range.",
+      "remediationPlan": "1) Monitor GHSA-3q49-cfcf-g5fm for corrected version range; 2) Upgrade openclaw to a post-fix release once available; 3) Remove override once upstream resolves.",
+      "reviewIntervalDays": 30
+    }
+  ]
+}

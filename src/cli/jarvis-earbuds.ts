@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
 import { createBridgeServer } from '../bridge/server';
 import { createBridgeRuntime } from '../bridge/runtime';
+import { buildRelayPairingPageUrl, buildRelayPairingUri, resolveRelayPairingBaseUrl } from '../pairing/uri';
 import type { Notifier } from '../bridge/speaker';
 import { resolveOpenClawRewritePolicy } from '../openclaw/client';
 import { loadFixtureEvent, resolveBridgeBaseUrl, sendEvent } from '../simulator/client';
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
         options: {
           port: { type: 'string', default: '4545' },
           ...sharedNetworkOptionDefinitions,
+          'pairing-base-url': { type: 'string' },
           ...sharedRuntimeOptionDefinitions,
         },
         allowPositionals: true,
@@ -64,9 +66,15 @@ async function main(): Promise<void> {
       if (runtimeOptions.openclaw) {
         preflightOpenClawOptions(runtimeOptions.openclaw);
       }
+      const pairingBaseUrl = resolveRelayPairingBaseUrl({
+        host,
+        port,
+        pairingBaseUrl: typeof values['pairing-base-url'] === 'string' ? values['pairing-base-url'] : undefined,
+      });
       const { server } = createBridgeServer({
         ...runtimeOptions,
         ...(relayToken ? { relayToken } : {}),
+        ...(pairingBaseUrl ? { pairingBaseUrl } : {}),
       });
       server.listen(port, host, () => {
         if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
@@ -75,6 +83,20 @@ async function main(): Promise<void> {
         process.stdout.write(
           `DevPods Bridge listening on http://${host}:${port} (${formatRuntimeSummary(runtimeOptions)})\n`,
         );
+
+        if (pairingBaseUrl) {
+          process.stdout.write(`Bridge pairing page: ${buildRelayPairingPageUrl(pairingBaseUrl)}\n`);
+          process.stdout.write(
+            `Relay pairing URI: ${buildRelayPairingUri({
+              bridgeBaseUrl: pairingBaseUrl,
+              workspace: 'current_repo',
+            })}\n`,
+          );
+        } else {
+          process.stdout.write(
+            'Relay pairing URI unavailable for the current bridge binding. Use --pairing-base-url with a LAN-reachable bridge URL to pair the Android relay.\n',
+          );
+        }
       });
       return;
     }
@@ -223,7 +245,7 @@ async function main(): Promise<void> {
     }
     default:
       process.stdout.write(
-        'Usage: devpods <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path]\n',
+        'Usage: devpods <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path] [--pairing-base-url http://bridge-host:4545]\n',
       );
   }
 }

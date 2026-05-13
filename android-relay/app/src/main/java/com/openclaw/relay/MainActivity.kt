@@ -1,42 +1,60 @@
 package com.openclaw.relay
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.format.DateFormat
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import java.util.Date
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.openclaw.relay.device.DeviceCapabilityEntry
+import com.openclaw.relay.ui.components.BottomNav
+import com.openclaw.relay.ui.components.DevPodsBackground
+import com.openclaw.relay.ui.components.DevPodsTab
+import com.openclaw.relay.ui.components.TopBar
+import com.openclaw.relay.ui.screens.ActivityScreen
+import com.openclaw.relay.ui.screens.DeveloperModeScreen
+import com.openclaw.relay.ui.screens.DeviceScreen
+import com.openclaw.relay.ui.screens.HelpScreen
+import com.openclaw.relay.ui.screens.HomeScreen
+import com.openclaw.relay.ui.screens.OnboardingScreen
+import com.openclaw.relay.ui.screens.SetupWizardScreen
+import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.diagnostic.DiagnosticExportOptions
+import com.openclaw.relay.ui.theme.DevPodsTheme
+
+private const val EXPECTED_PROTOCOL_VERSION = 1
 
 class MainActivity : ComponentActivity() {
     private val relayViewModel: RelayViewModel by viewModels()
@@ -44,34 +62,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        relayViewModel.initialize(this)
         pendingAutomationIntent = intent
+        consumePairingDataIntent(intent)
 
         setContent {
-            MaterialTheme {
-                val state by relayViewModel.state.collectAsState()
-                val context = LocalContext.current
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions(),
-                ) { }
-
-                RelayScreen(
-                    state = state,
-                    onRequestPermissions = {
-                        permissionLauncher.launch(buildRuntimePermissions())
-                    },
-                    onBridgeBaseUrlChanged = relayViewModel::updateBridgeBaseUrl,
-                    onRelayTokenChanged = relayViewModel::updateRelayToken,
-                    onWorkspaceChanged = relayViewModel::updateWorkspace,
-                    onStartRelay = { relayViewModel.startRelay(context) },
-                    onStopRelay = { relayViewModel.stopRelay(context) },
-                    onCheckHealth = { relayViewModel.checkHealth(context) },
-                    onQuickStatus = { relayViewModel.quickStatus(context) },
-                    onWakeAndListen = { relayViewModel.wakeAndListen(context) },
-                    onTestSpeaker = { relayViewModel.testSpeaker(context) },
-                    onTapTest = { relayViewModel.tapTest(context) },
-                    onApprove = { relayViewModel.approve(context) },
-                    onReject = { relayViewModel.reject(context) },
-                    onCancel = { relayViewModel.cancel(context) },
+            DevPodsTheme(darkTheme = false) {
+                RelayApp(
+                    relayViewModel = relayViewModel,
+                    buildRuntimePermissions = ::buildRuntimePermissions,
                 )
             }
         }
@@ -81,6 +80,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingAutomationIntent = intent
+        consumePairingDataIntent(intent)
         dispatchPendingAutomationIntent()
     }
 
@@ -89,15 +89,30 @@ class MainActivity : ComponentActivity() {
         dispatchPendingAutomationIntent()
     }
 
+    private fun consumePairingDataIntent(intent: Intent?) {
+        val data = intent?.dataString?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val isPairingIntent = data.startsWith("devpods://pair", ignoreCase = true) ||
+            data.contains("/pairing", ignoreCase = true)
+        if (!isPairingIntent) return
+
+        relayViewModel.importPairingUri(this, data)
+        intent.setData(null)
+    }
+
     private fun buildRuntimePermissions(): Array<String> {
         return buildList {
             add(Manifest.permission.RECORD_AUDIO)
-            add(Manifest.permission.BLUETOOTH_CONNECT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_SCAN)
+            }
+            add(Manifest.permission.CAMERA)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 add(Manifest.permission.POST_NOTIFICATIONS)
             }
         }.toTypedArray()
     }
+
     private fun dispatchPendingAutomationIntent() {
         val automationIntent = pendingAutomationIntent ?: return
         val serviceAction = automationIntent.getStringExtra(RelayService.EXTRA_SERVICE_ACTION) ?: return
@@ -142,12 +157,223 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RelayScreen(
+private fun RelayApp(
+    relayViewModel: RelayViewModel,
+    buildRuntimePermissions: () -> Array<String>,
+) {
+    val state by relayViewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var selectedTab by rememberSaveable { mutableStateOf(DevPodsTab.Home) }
+    var isDevMode by rememberSaveable { mutableStateOf(false) }
+    var showImportDialog by rememberSaveable { mutableStateOf(false) }
+    var importLink by rememberSaveable { mutableStateOf(state.pendingPairingUri) }
+    var diagnosticsExported by rememberSaveable { mutableStateOf(false) }
+    var queuedActionsSent by rememberSaveable { mutableStateOf(false) }
+    var diagnosticsIncludePhoneModel by rememberSaveable { mutableStateOf(true) }
+    var diagnosticsIncludeCapabilityMatrix by rememberSaveable { mutableStateOf(true) }
+    var diagnosticsIncludeErrorCategories by rememberSaveable { mutableStateOf(true) }
+    var diagnosticsIncludeRawRoute by rememberSaveable { mutableStateOf(false) }
+    var permissionRefreshTick by remember { mutableStateOf(0) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        permissionRefreshTick++
+    }
+
+    val qrScannerLauncher = rememberLauncherForActivityResult(
+        contract = ScanContract(),
+    ) { result ->
+        val contents = result.contents?.trim()
+        if (contents.isNullOrBlank()) {
+            relayViewModel.reportPairingScanError("QR scan cancelled or no code was detected. Try scanning again or paste the pairing link.")
+        } else {
+            relayViewModel.importPairingUri(context, contents)
+            selectedTab = DevPodsTab.Device
+        }
+    }
+
+    val requestPermissions = {
+        permissionLauncher.launch(buildRuntimePermissions())
+    }
+    val scanQr = {
+        qrScannerLauncher.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan the DevPods bridge QR")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+                .setBarcodeImageEnabled(false),
+        )
+    }
+    val openImportDialog = {
+        importLink = state.pendingPairingUri
+        showImportDialog = true
+    }
+
+    LaunchedEffect(isDevMode) {
+        if (!isDevMode && selectedTab == DevPodsTab.Dev) {
+            selectedTab = DevPodsTab.Home
+        }
+    }
+
+    if (state.showOnboarding) {
+        OnboardingScreen(
+            onDismiss = {
+                relayViewModel.dismissOnboarding(context)
+                relayViewModel.startSetup(context)
+            },
+        )
+        return
+    }
+
+    if (state.showSetupWizard) {
+        SetupWizardScreen(
+            phase = state.setupPhase,
+            testState = state.setupTestState,
+            errorMessage = state.errorMessage,
+            userFacingErrorMessage = state.userFacingErrorMessage,
+            onStartSetup = { relayViewModel.startSetup(context) },
+            onSkipSetup = {
+                relayViewModel.skipSetup(context)
+                selectedTab = DevPodsTab.Home
+            },
+            onScanQr = scanQr,
+            onImportLink = openImportDialog,
+            onProbeDevice = { relayViewModel.probeDevice(context) },
+            onTestWake = { relayViewModel.testWake(context) },
+            onTestStt = { relayViewModel.testStt(context) },
+            onCompleteSetup = {
+                relayViewModel.completeSetup(context)
+                selectedTab = DevPodsTab.Home
+            },
+            onRetry = { retrySetupPhase(state.setupPhase, relayViewModel, context) },
+        )
+        if (showImportDialog) {
+            PairingImportDialog(
+                value = importLink,
+                onValueChange = { importLink = it },
+                onDismiss = { showImportDialog = false },
+                onImport = {
+                    relayViewModel.importPairingUri(context, importLink)
+                    showImportDialog = false
+                },
+            )
+        }
+        return
+    }
+
+    RelayAppShell(
+        state = state,
+        selectedTab = selectedTab,
+        isDevMode = isDevMode,
+        diagnosticsExported = diagnosticsExported,
+        queuedActionsSent = queuedActionsSent,
+        diagnosticsIncludePhoneModel = diagnosticsIncludePhoneModel,
+        diagnosticsIncludeCapabilityMatrix = diagnosticsIncludeCapabilityMatrix,
+        diagnosticsIncludeErrorCategories = diagnosticsIncludeErrorCategories,
+        diagnosticsIncludeRawRoute = diagnosticsIncludeRawRoute,
+        permissionRefreshTick = permissionRefreshTick,
+        onTabSelected = { selectedTab = it },
+        onRequestPermissions = requestPermissions,
+        onPairBridge = { selectedTab = DevPodsTab.Device },
+        onScanQr = scanQr,
+        onImportLink = openImportDialog,
+        onResumeSetup = { relayViewModel.startSetup(context) },
+        onSkipSetup = { relayViewModel.skipSetup(context) },
+        onReRunSetup = { relayViewModel.startSetup(context) },
+        onResetSetup = { relayViewModel.resetSetup(context) },
+        onRePair = scanQr,
+        onForgetBridge = { relayViewModel.forgetBridge(context) },
+        onToggleBluetoothRouting = {
+            relayViewModel.updateBluetoothRouting(context, !state.config.useBluetoothRouting)
+        },
+        onTogglePhoneMicFallback = {
+            relayViewModel.updatePhoneMicFallback(context, !state.phoneMicFallback)
+        },
+        onToggleAssistantFallback = {
+            relayViewModel.updateAssistantFallback(context, !state.assistantFallback)
+        },
+        onStartRelay = { relayViewModel.startRelay(context) },
+        onStopRelay = { relayViewModel.stopRelay(context) },
+        onCheckHealth = { relayViewModel.checkHealth(context) },
+        onQuickStatus = { relayViewModel.quickStatus(context) },
+        onWakeAndListen = { relayViewModel.wakeAndListen(context) },
+        onTestSpeaker = { relayViewModel.testSpeaker(context) },
+        onTapTest = { relayViewModel.tapTest(context) },
+        onApprove = { relayViewModel.approve(context) },
+        onReject = { relayViewModel.reject(context) },
+        // onCancel callback removed — cancel action is handled through service intents directly
+        onRetryQueue = {
+            relayViewModel.retryQueuedBridgeEvents(context)
+            queuedActionsSent = true
+        },
+        onDiscardQueue = { relayViewModel.discardQueuedBridgeEvents(context) },
+        onDismissError = { relayViewModel.dismissError() },
+        onDismissDiagnostics = { diagnosticsExported = false },
+        onDismissQueued = { queuedActionsSent = false },
+        onExportDiagnostics = {
+            relayViewModel.exportDiagnostics(
+                context,
+                options = diagnosticOptions(
+                    diagnosticsIncludePhoneModel,
+                    diagnosticsIncludeCapabilityMatrix,
+                    diagnosticsIncludeErrorCategories,
+                    diagnosticsIncludeRawRoute,
+                ),
+            )
+            diagnosticsExported = true
+        },
+        onEnableDevMode = {
+            isDevMode = true
+            selectedTab = DevPodsTab.Dev
+        },
+        onOpenSettings = { context.openAppSettings() },
+        onDiagnosticsPhoneModelChanged = { diagnosticsIncludePhoneModel = it },
+        onDiagnosticsCapabilityMatrixChanged = { diagnosticsIncludeCapabilityMatrix = it },
+        onDiagnosticsErrorCategoriesChanged = { diagnosticsIncludeErrorCategories = it },
+        onDiagnosticsRawRouteChanged = { diagnosticsIncludeRawRoute = it },
+    )
+
+    if (showImportDialog) {
+        PairingImportDialog(
+            value = importLink,
+            onValueChange = { importLink = it },
+            onDismiss = { showImportDialog = false },
+            onImport = {
+                relayViewModel.importPairingUri(context, importLink)
+                showImportDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun RelayAppShell(
     state: RelayUiState,
+    selectedTab: DevPodsTab,
+    isDevMode: Boolean,
+    diagnosticsExported: Boolean,
+    queuedActionsSent: Boolean,
+    diagnosticsIncludePhoneModel: Boolean,
+    diagnosticsIncludeCapabilityMatrix: Boolean,
+    diagnosticsIncludeErrorCategories: Boolean,
+    diagnosticsIncludeRawRoute: Boolean,
+    permissionRefreshTick: Int,
+    onTabSelected: (DevPodsTab) -> Unit,
     onRequestPermissions: () -> Unit,
-    onBridgeBaseUrlChanged: (String) -> Unit,
-    onRelayTokenChanged: (String) -> Unit,
-    onWorkspaceChanged: (String) -> Unit,
+    onPairBridge: () -> Unit,
+    onScanQr: () -> Unit,
+    onImportLink: () -> Unit,
+    onResumeSetup: () -> Unit,
+    onSkipSetup: () -> Unit,
+    onReRunSetup: () -> Unit,
+    onResetSetup: () -> Unit,
+    onRePair: () -> Unit,
+    onForgetBridge: () -> Unit,
+    onToggleBluetoothRouting: () -> Unit,
+    onTogglePhoneMicFallback: () -> Unit,
+    onToggleAssistantFallback: () -> Unit,
     onStartRelay: () -> Unit,
     onStopRelay: () -> Unit,
     onCheckHealth: () -> Unit,
@@ -157,224 +383,277 @@ private fun RelayScreen(
     onTapTest: () -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
-    onCancel: () -> Unit,
+    onRetryQueue: () -> Unit,
+    onDiscardQueue: () -> Unit,
+    onDismissError: () -> Unit,
+    onDismissDiagnostics: () -> Unit,
+    onDismissQueued: () -> Unit,
+    onExportDiagnostics: () -> Unit,
+    onEnableDevMode: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onDiagnosticsPhoneModelChanged: (Boolean) -> Unit,
+    onDiagnosticsCapabilityMatrixChanged: (Boolean) -> Unit,
+    onDiagnosticsErrorCategoriesChanged: (Boolean) -> Unit,
+    onDiagnosticsRawRouteChanged: (Boolean) -> Unit,
 ) {
-    var showAdvancedSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val primaryState = derivePrimaryState(state)
+    val microphoneAllowed = remember(permissionRefreshTick) {
+        hasPermission(context, Manifest.permission.RECORD_AUDIO)
+    }
+    val notificationsAllowed = remember(permissionRefreshTick) {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            hasPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+    }
+    val appVersion = remember { appVersionName(context) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("DevPods Relay", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Android-first voice relay for headset controls, developer commands, and short spoken replies.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+    DevPodsBackground {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = { TopBar(isDevMode = isDevMode) },
+            bottomBar = {
+                BottomNav(
+                    selectedTab = selectedTab,
+                    isDevMode = isDevMode,
+                    onTabSelected = onTabSelected,
+                )
+            },
+        ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
 
-        RelayStatusCard(title = "Current state") {
-            Text(primaryState.first, style = MaterialTheme.typography.titleLarge)
-            Text(primaryState.second)
-            Text("Bridge: ${state.bridgeStatus}")
-            Text("Audio route: ${state.audioRoute.status}")
-        }
-
-        RelayStatusCard(title = "Primary actions") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRequestPermissions, modifier = Modifier.weight(1f)) {
-                    Text("Permissions")
-                }
-                Button(onClick = onStartRelay, modifier = Modifier.weight(1f)) {
-                    Text("Start Relay")
-                }
-                Button(onClick = onStopRelay, modifier = Modifier.weight(1f)) {
-                    Text("Stop")
-                }
-            }
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCheckHealth, modifier = Modifier.weight(1f)) {
-                    Text("Health")
-                }
-                Button(onClick = onQuickStatus, modifier = Modifier.weight(1f)) {
-                    Text("Quick Status")
-                }
-                Button(onClick = onWakeAndListen, modifier = Modifier.weight(1f)) {
-                    Text("Push To Talk")
-                }
-            }
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onTestSpeaker, modifier = Modifier.weight(1f)) {
-                    Text("Speaker Test")
-                }
-                Button(onClick = onTapTest, modifier = Modifier.weight(1f)) {
-                    Text("Tap Test")
-                }
-                Button(
-                    onClick = { showAdvancedSettings = !showAdvancedSettings },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (showAdvancedSettings) "Hide Settings" else "Advanced")
-                }
-            }
-        }
-
-        if (showAdvancedSettings) {
-            RelayStatusCard(title = "Advanced settings") {
-                OutlinedTextField(
-                    value = state.config.bridgeBaseUrl,
-                    onValueChange = onBridgeBaseUrlChanged,
-                    label = { Text("Bridge base URL") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+            when (selectedTab) {
+                DevPodsTab.Home -> HomeScreen(
+                    state = state,
+                    onPairBridge = onPairBridge,
+                    onListenNow = onWakeAndListen,
+                    onCheckBridge = onCheckHealth,
+                    onViewActivity = { onTabSelected(DevPodsTab.Activity) },
+                    onApprove = onApprove,
+                    onReject = onReject,
+                    onStop = onStopRelay,
+                    onRetryNow = onRetryQueue,
+                    onDiscard = onDiscardQueue,
+                    onDismissError = onDismissError,
+                    modifier = contentModifier,
                 )
 
-                OutlinedTextField(
-                    value = state.config.relayToken,
-                    onValueChange = onRelayTokenChanged,
-                    label = { Text("Relay bearer token") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                DevPodsTab.Activity -> ActivityScreen(
+                    state = state,
+                    diagnosticsExported = diagnosticsExported,
+                    queuedActionsSent = queuedActionsSent,
+                    showApprovalDetail = state.pendingApprovalRequest != null,
+                    onApprove = onApprove,
+                    onReject = onReject,
+                    onDismissDiagnostics = onDismissDiagnostics,
+                    onDismissQueued = onDismissQueued,
+                    modifier = contentModifier,
                 )
 
-                OutlinedTextField(
-                    value = state.config.workspace,
-                    onValueChange = onWorkspaceChanged,
-                    label = { Text("Workspace") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                DevPodsTab.Device -> DeviceScreen(
+                    uiState = state,
+                    capabilityEntry = state.currentCapabilityEntry(),
+                    onScanQr = onScanQr,
+                    onImportLink = onImportLink,
+                    onResumeSetup = onResumeSetup,
+                    onSkipSetup = onSkipSetup,
+                    onReRunSetup = onReRunSetup,
+                    onResetSetup = onResetSetup,
+                    onRePair = onRePair,
+                    onForgetBridge = onForgetBridge,
+                    onToggleBluetoothRouting = onToggleBluetoothRouting,
+                    onTogglePhoneMicFallback = onTogglePhoneMicFallback,
+                    onToggleAssistantFallback = onToggleAssistantFallback,
+                    onTestVoice = onTestSpeaker,
+                    onRepairMic = onRequestPermissions,
+                    modifier = contentModifier,
                 )
-            }
-        }
 
-        RelayStatusCard(title = "Readiness") {
-            Text("Speech recognition: ${if (state.speechRecognitionAvailable) "Ready" else "Unavailable"}")
-            Text("Text to speech: ${if (state.ttsReady) "Ready" else "Starting"}")
-            Text("Route status: ${state.audioRoute.status}")
-            Text("Selected device: ${formatRouteDevice(state.audioRoute)}")
-            Text("Available devices: ${state.audioRoute.availableDevices}")
-        }
+                DevPodsTab.Help -> HelpScreen(
+                    isBridgeUnreachable = isBridgeUnreachable(state),
+                    microphoneAllowed = microphoneAllowed,
+                    notificationsAllowed = notificationsAllowed,
+                    speechEngineAvailable = state.speechRecognitionAvailable,
+                    showPermissionModal = !microphoneAllowed,
+                    isDevModeEnabled = isDevMode,
+                    diagnosticsIncludePhoneModel = diagnosticsIncludePhoneModel,
+                    diagnosticsIncludeCapabilityMatrix = diagnosticsIncludeCapabilityMatrix,
+                    diagnosticsIncludeErrorCategories = diagnosticsIncludeErrorCategories,
+                    diagnosticsIncludeRawRoute = diagnosticsIncludeRawRoute,
+                    appVersion = appVersion,
+                    bridgeVersion = state.lastBridgeHealth?.bridgeVersion ?: "Unknown",
+                    protocolStatus = protocolStatus(state),
+                    showVersionMismatch = showVersionMismatch(state, appVersion),
+                    onDiagnosticsPhoneModelChanged = onDiagnosticsPhoneModelChanged,
+                    onDiagnosticsCapabilityMatrixChanged = onDiagnosticsCapabilityMatrixChanged,
+                    onDiagnosticsErrorCategoriesChanged = onDiagnosticsErrorCategoriesChanged,
+                    onDiagnosticsRawRouteChanged = onDiagnosticsRawRouteChanged,
+                    onRetryBridge = onCheckHealth,
+                    onOpenPairingHelp = { onTabSelected(DevPodsTab.Device) },
+                    onRepairMicPermission = onRequestPermissions,
+                    onUsePhoneMicFallback = {
+                        if (!state.phoneMicFallback) {
+                            onTogglePhoneMicFallback()
+                        }
+                    },
+                    onExportDiagnostics = onExportDiagnostics,
+                    onEnableDevMode = onEnableDevMode,
+                    onOpenSettings = onOpenSettings,
+                    onNotNow = onDismissError,
+                    onShareDiagnostics = onExportDiagnostics,
+                    onPreviewDiagnostics = onExportDiagnostics,
+                    onUpdateGuide = { onTabSelected(DevPodsTab.Device) },
+                    onContinueAnyway = onDismissError,
+                    modifier = contentModifier,
+                )
 
-        RelayStatusCard(title = "Hardware verification") {
-            val wakeSignal = state.lastWakeSignal
-            Text("Wake source: ${wakeSignal?.sourceLabel ?: "No wake signal captured yet"}")
-            Text("Trigger: ${wakeSignal?.trigger ?: "none"}")
-            Text("Media key: ${wakeSignal?.keyLabel ?: "none"}")
-            Text("Controller package: ${wakeSignal?.controllerPackage ?: "unknown"}")
-            Text("Observed at: ${formatTimestamp(context, wakeSignal?.receivedAtMs)}")
-            Text(
-                when (wakeSignal?.source) {
-                    "physical_media_button" -> "Physical headset media-button delivery has been observed on this device."
-                    "manual_tap_test" -> "Tap Test reached the relay path. Use a real earbud press to verify actual hardware delivery."
-                    else -> "Physical headset wake is not verified yet. Use Tap Test for UI and log validation, or a real earbud press to confirm hardware delivery."
-                },
-            )
-        }
-
-        RelayStatusCard(title = "Approval controls") {
-            Button(onClick = onRequestPermissions, modifier = Modifier.weight(1f)) {
-                Text("Pending action: ${state.pendingActionId ?: "none"}")
-            }
-
-            Text("Summary: ${state.pendingApprovalSummary ?: "none"}")
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onApprove, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
-                    Text("Approve")
-                }
-                Button(onClick = onReject, modifier = Modifier.weight(1f), enabled = state.pendingApprovalSummary != null) {
-                    Text("Reject")
-                }
-                Button(onClick = onCancel, modifier = Modifier.weight(1f), enabled = state.pendingActionId != null) {
-                    Text("Cancel")
-                }
-            }
-        }
-
-        RelayStatusCard(title = "Service") {
-            Text("Running: ${state.isServiceRunning}")
-            Text("Listening: ${state.isListening}")
-            Text("Thinking: ${state.isAwaitingBridgeResponse}")
-            Text("Speaking: ${state.isSpeaking}")
-            Text("Last headset event: ${state.lastHeadsetEvent ?: "none"}")
-        }
-
-        RelayStatusCard(title = "Autonomy") {
-            val autonomy = state.activeAutonomy
-            Text("Phase: ${autonomy?.phase ?: "none"}")
-            Text("Mode: ${autonomy?.mode ?: "none"}")
-            Text("Summary: ${autonomy?.summary ?: "none"}")
-            Text("Next step: ${autonomy?.nextStep ?: "none"}")
-            Text("Continue after: ${autonomy?.continueAfterMs?.toString() ?: "-"} ms")
-        }
-
-        RelayStatusCard(title = "Latest Interaction") {
-            Text("Partial transcript: ${state.partialTranscript.ifBlank { "none" }}")
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("Transcript: ${state.lastTranscript.ifBlank { "none" }}")
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("Speak: ${state.lastResponseSpeak.ifBlank { "none" }}")
-            Text("Display: ${state.lastResponseDisplay.ifBlank { "none" }}")
-            Text("Status: ${state.lastResponseStatus ?: "none"}")
-        }
-
-        RelayStatusCard(title = "Diagnostics") {
-            Text("Health: ${state.latency.lastHealthMs?.toString() ?: "-"} ms")
-            Text("Bridge command: ${state.latency.lastBridgeCommandMs?.toString() ?: "-"} ms")
-            Text("Speech started at: ${state.latency.lastSpeechStartedAtMs?.toString() ?: "-"}")
-            Text("Last speech error: ${state.lastSpeechError ?: "none"}")
-            Text("Last speaker error: ${state.lastTtsError ?: "none"}")
-        }
-
-        if (!state.errorMessage.isNullOrBlank()) {
-            RelayStatusCard(title = "Error") {
-                Text(state.errorMessage)
+                DevPodsTab.Dev -> DeveloperModeScreen(
+                    config = state.config,
+                    bridgeStatus = state.bridgeStatus,
+                    audioRoute = state.audioRoute,
+                    lastWake = state.lastWakeSignal,
+                    latency = state.latency,
+                    isServiceRunning = state.isServiceRunning,
+                    onRequestPermissions = onRequestPermissions,
+                    onStartRelay = onStartRelay,
+                    onStopRelay = onStopRelay,
+                    onCheckHealth = onCheckHealth,
+                    onQuickStatus = onQuickStatus,
+                    onWakeAndListen = onWakeAndListen,
+                    onTestSpeaker = onTestSpeaker,
+                    onTapTest = onTapTest,
+                    modifier = contentModifier,
+                )
             }
         }
     }
-}
-
-private fun derivePrimaryState(state: RelayUiState): Pair<String, String> {
-    return when {
-        !state.errorMessage.isNullOrBlank() -> "Attention needed" to state.errorMessage
-        !state.speechRecognitionAvailable -> "Speech unavailable" to "Enable speech recognition on this device before using headset wake or push-to-talk."
-        !state.ttsReady -> "Speaker warming up" to "Text-to-speech is still initializing. Use Speaker Test when it becomes ready."
-        state.isListening -> "Listening" to "Speak a short developer request through the active headset or the phone microphone."
-        state.isAwaitingBridgeResponse -> "Thinking" to "DevPods Bridge is processing the current request."
-        state.isSpeaking -> "Speaking" to "A spoken reply is currently playing through the selected communication route."
-        state.pendingApprovalSummary != null -> "Approval required" to state.pendingApprovalSummary
-        state.isServiceRunning && state.bridgeStatus.startsWith("Healthy") -> "Ready" to "Relay is running and the bridge is responding."
-        state.isServiceRunning -> "Relay running" to "Use Health to confirm the bridge before starting a live session."
-        else -> "Start the relay" to "Grant permissions, verify the bridge, then start DevPods Relay."
-    }
-}
-
-private fun formatRouteDevice(snapshot: RelayAudioRouteSnapshot): String {
-    return listOfNotNull(snapshot.selectedDeviceType, snapshot.selectedDeviceName).joinToString(separator = " · ")
-        .ifBlank { "none" }
-}
-
-private fun formatTimestamp(context: android.content.Context, value: Long?): String {
-    if (value == null) {
-        return "never"
-    }
-
-    return DateFormat.getTimeFormat(context).format(Date(value))
 }
 
 @Composable
-private fun RelayStatusCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
+private fun PairingImportDialog(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onImport: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            content()
-        }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import bridge link") },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = { Text("devpods://pair or pairing page URL") },
+                singleLine = false,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onImport) {
+                Text("Import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+private fun retrySetupPhase(
+    phase: SetupPhase,
+    relayViewModel: RelayViewModel,
+    context: Context,
+) {
+    when (phase) {
+        SetupPhase.NOT_STARTED -> relayViewModel.startSetup(context)
+        SetupPhase.PAIRING -> relayViewModel.checkHealth(context)
+        SetupPhase.DEVICE_PROBE -> relayViewModel.probeDevice(context)
+        SetupPhase.GESTURE_TEST -> relayViewModel.testWake(context)
+        SetupPhase.STT_TEST -> relayViewModel.testStt(context)
+        SetupPhase.COMPLETE -> relayViewModel.completeSetup(context)
     }
+}
+
+private fun RelayUiState.currentCapabilityEntry(): DeviceCapabilityEntry? {
+    val currentDeviceName = currentDeviceState?.displayName
+    return when {
+        !currentDeviceName.isNullOrBlank() -> capabilityMatrix.entries.lastOrNull {
+            it.deviceModel.equals(currentDeviceName, ignoreCase = true)
+        } ?: capabilityMatrix.entries.lastOrNull()
+        else -> capabilityMatrix.entries.lastOrNull()
+    }
+}
+
+private fun buildRecentEvents(state: RelayUiState): List<String> {
+    return buildList {
+        state.lastWakeSignal?.let { add("Wake captured from ${it.sourceLabel}.") }
+        if (state.lastTranscript.isNotBlank()) add("Transcript captured: ${state.lastTranscript}")
+        if (state.lastResponseStatus != null) add("Bridge returned ${state.lastResponseStatus}.")
+        if (state.bridgeQueueState.queuedCount > 0) add("${state.bridgeQueueState.queuedCount} bridge command(s) queued.")
+    }
+}
+
+private fun hasPermission(context: Context, permission: String): Boolean {
+    return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+}
+
+private fun isBridgeUnreachable(state: RelayUiState): Boolean {
+    val message = state.userFacingErrorMessage.orEmpty()
+    return message.contains("bridge", ignoreCase = true) &&
+        !state.bridgeStatus.startsWith("Healthy", ignoreCase = true)
+}
+
+private fun protocolStatus(state: RelayUiState): String {
+    val health = state.lastBridgeHealth ?: return "Unknown"
+    return if (health.protocolVersion == EXPECTED_PROTOCOL_VERSION) {
+        "Compatible"
+    } else {
+        "App expects v$EXPECTED_PROTOCOL_VERSION, bridge reports v${health.protocolVersion}"
+    }
+}
+
+private fun showVersionMismatch(state: RelayUiState, appVersion: String): Boolean {
+    val health = state.lastBridgeHealth ?: return false
+    return health.protocolVersion != EXPECTED_PROTOCOL_VERSION ||
+        compareSemver(appVersion, health.minAppVersion) < 0
+}
+
+private fun compareSemver(left: String, right: String): Int {
+    val leftParts = left.split(".", "-").mapNotNull { it.toIntOrNull() }
+    val rightParts = right.split(".", "-").mapNotNull { it.toIntOrNull() }
+    val max = maxOf(leftParts.size, rightParts.size, 3)
+    for (index in 0 until max) {
+        val leftValue = leftParts.getOrElse(index) { 0 }
+        val rightValue = rightParts.getOrElse(index) { 0 }
+        if (leftValue != rightValue) return leftValue.compareTo(rightValue)
+    }
+    return 0
+}
+
+private fun diagnosticOptions(
+    includePhoneModel: Boolean,
+    includeCapabilityMatrix: Boolean,
+    includeErrorCategories: Boolean,
+    includeRawRoute: Boolean,
+): DiagnosticExportOptions = DiagnosticExportOptions(
+    includePhoneModel = includePhoneModel,
+    includeCapabilityMatrix = includeCapabilityMatrix,
+    includeErrorCategories = includeErrorCategories,
+    includeRawRoute = includeRawRoute,
+)
+
+private fun appVersionName(context: Context): String {
+    return runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: BuildConfig.VERSION_NAME
+    }.getOrDefault(BuildConfig.VERSION_NAME)
+}
+
+private fun Context.openAppSettings() {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    startActivity(intent)
 }

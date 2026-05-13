@@ -74,6 +74,16 @@ export const riskPolicySchema = z.object({
   approvalTimeoutMs: z.number().int().positive(),
 });
 
+export const hardwareContextSchema = z.object({
+  provider: z.string().min(1),
+  wakeSource: z.string().nullable().default(null),
+  deviceConfidence: z.enum(['proven', 'observed', 'inferred', 'unproven']).default('unproven'),
+  earState: z.enum(['in_ear', 'out_of_ear', 'both_in_ear', 'left_in_ear', 'right_in_ear', 'unknown']).nullable().default(null),
+  batteryState: z.enum(['ok', 'low', 'critical', 'unknown']).nullable().default(null),
+  deviceModel: z.string().nullable().default(null),
+  connectionState: z.enum(['connected', 'disconnected', 'connecting', 'unknown']).nullable().default(null),
+});
+
 export const earbudEventSchema = z.object({
   source: z.string().min(1).default('developer_earbuds_simulator'),
   sessionId: z.string().min(1).default('sim-session'),
@@ -86,6 +96,7 @@ export const earbudEventSchema = z.object({
   profile: profileSchema.optional(),
   utterance: z.string().min(1).max(400).optional(),
   pendingActionId: z.string().min(1).optional(),
+  hardwareContext: hardwareContextSchema.optional(),
 });
 
 export const bridgeRequestSchema = z.object({
@@ -111,6 +122,7 @@ export const bridgeRequestSchema = z.object({
       batteryPercent: null,
       profile: null,
     }),
+  hardwareContext: hardwareContextSchema.nullable().default(null),
 });
 
 export const approvalRequestSchema = z.object({
@@ -122,6 +134,14 @@ export const approvalRequestSchema = z.object({
 
 export const autonomyPhaseSchema = z.enum(['report', 'plan', 'implementation']);
 export const autonomyModeSchema = z.enum(['continue_on_silence', 'awaiting_user_input']);
+
+export const pairingVerifyRequestSchema = z.object({
+  pairingCode: z.string().min(1),
+});
+
+export const pairingVerifyResponseSchema = z.object({
+  relayToken: z.string(),
+});
 
 export const autonomyInstructionSchema = z.object({
   phase: autonomyPhaseSchema,
@@ -188,8 +208,10 @@ export const auditRecordSchema = z.object({
   status: responseStatusSchema,
   actionId: z.string().nullable(),
   detail: z.string().nullable(),
+  hardwareContext: hardwareContextSchema.nullable().default(null),
 });
 
+export type HardwareContext = z.infer<typeof hardwareContextSchema>;
 export type EarbudEvent = z.infer<typeof earbudEventSchema>;
 export type BridgeRequest = z.infer<typeof bridgeRequestSchema>;
 export type JarvisResponse = z.infer<typeof jarvisResponseSchema>;

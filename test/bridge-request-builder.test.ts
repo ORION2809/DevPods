@@ -60,4 +60,48 @@ describe('buildBridgeRequest', () => {
     expect(interruptRequest.event).toBe('autonomy_replan');
     expect(interruptRequest.utterance).toBe('what branch am i on');
   });
+
+  it('propagates hardware context from the earbud event', () => {
+    const request = buildBridgeRequest(
+      {
+        source: 'android_relay',
+        sessionId: 'android_hw',
+        workspace: 'current_repo',
+        device: 'both_buds',
+        event: 'headset_button_single',
+        timestamp: Date.now(),
+        hardwareContext: {
+          provider: 'librepods_airpods',
+          wakeSource: 'left_double_press',
+          deviceConfidence: 'proven',
+          earState: 'both_in_ear',
+          batteryState: 'ok',
+          deviceModel: 'AirPods Pro 2',
+          connectionState: 'connected',
+        },
+      } satisfies EarbudEvent,
+      workspace,
+    );
+
+    expect(request.hardwareContext).not.toBeNull();
+    expect(request.hardwareContext?.provider).toBe('librepods_airpods');
+    expect(request.hardwareContext?.wakeSource).toBe('left_double_press');
+    expect(request.hardwareContext?.deviceConfidence).toBe('proven');
+  });
+
+  it('sets hardware context to null when not provided', () => {
+    const request = buildBridgeRequest(
+      {
+        source: 'android_relay',
+        sessionId: 'android_no_hw',
+        workspace: 'current_repo',
+        device: 'both_buds',
+        event: 'android_push_to_talk',
+        timestamp: Date.now(),
+      } satisfies EarbudEvent,
+      workspace,
+    );
+
+    expect(request.hardwareContext).toBeNull();
+  });
 });

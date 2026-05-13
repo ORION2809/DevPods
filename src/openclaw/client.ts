@@ -1,7 +1,9 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { z } from 'zod';
 import type { EarbudEvent, JarvisResponse } from '../protocol/schemas';
@@ -11,6 +13,43 @@ import {
   ensureOpenClawRuntimeCompatibility,
   resolveOpenClawCommand,
 } from './sandbox';
+
+let cachedOpenClawGatewayClientModule: { moduleUrl: string; exportName: string } | null = null;
+
+async function resolveOpenClawGatewayClientModule(openClawEntryPath: string): Promise<{ moduleUrl: string; exportName: string }> {
+  if (cachedOpenClawGatewayClientModule) {
+    return cachedOpenClawGatewayClientModule;
+  }
+
+  const distDir = path.dirname(openClawEntryPath);
+  const files = fs.readdirSync(distDir).filter((f) => /^client-[A-Za-z0-9]+\.js$/.test(f));
+
+  for (const file of files) {
+    const moduleUrl = pathToFileURL(path.join(distDir, file)).href;
+    try {
+      const mod = await import(moduleUrl);
+      for (const [exportName, exportValue] of Object.entries(mod)) {
+        if (
+          typeof exportValue === 'function' &&
+          (exportName === 'GatewayClient' ||
+            (exportValue.name === 'GatewayClient' &&
+              typeof (exportValue.prototype as Record<string, unknown>)?.request === 'function'))
+        ) {
+          cachedOpenClawGatewayClientModule = { moduleUrl, exportName };
+          return cachedOpenClawGatewayClientModule;
+        }
+      }
+    } catch {
+      // Continue to next candidate.
+    }
+  }
+
+  throw new Error(
+    'Could not find the OpenClaw GatewayClient runtime module. '
+      + 'The installed openclaw package may have changed its internal file layout. '
+      + 'Expected a client-*.js file in ' + distDir + ' that exports GatewayClient.',
+  );
+}
 
 const completionEnvelopeSchema = z.object({
   choices: z
@@ -137,6 +176,8 @@ type ResidentGatewayWorkerRequest =
       payload: {
         openClawEntryPath: string;
         options: OpenClawGatewayClientOptions;
+        clientModuleUrl: string;
+        gatewayClientExportName: string;
       };
     }
   | {
@@ -169,8 +210,6 @@ interface ResidentGatewayConnection {
 
 const gatewayWorkerUrl = new URL(
   `data:text/javascript,${encodeURIComponent(String.raw`
-    import path from 'node:path';
-    import { pathToFileURL } from 'node:url';
     import { parentPort } from 'node:worker_threads';
 
     let client = null;
@@ -189,7 +228,7 @@ const gatewayWorkerUrl = new URL(
             return;
           }
 
-          client = await createClient(payload.openClawEntryPath, payload.options);
+          client = await createClient(payload.openClawEntryPath, payload.options, payload.clientModuleUrl, payload.gatewayClientExportName);
           reply(id, { connected: true });
           return;
         }
@@ -237,10 +276,9 @@ const gatewayWorkerUrl = new URL(
       }
     });
 
-    async function createClient(openClawEntryPath, options) {
-      const clientModuleUrl = pathToFileURL(path.join(path.dirname(openClawEntryPath), 'client-C_yF1Jx2.js')).href;
+    async function createClient(_openClawEntryPath, options, clientModuleUrl, gatewayClientExportName) {
       const module = await import(clientModuleUrl);
-      const GatewayClient = module.t;
+      const GatewayClient = module[gatewayClientExportName];
 
       if (typeof GatewayClient !== 'function') {
         throw new Error('Installed OpenClaw package does not expose the internal GatewayClient runtime.');
@@ -702,11 +740,14 @@ export class OpenClawGatewayClient {
     });
 
     try {
+      const clientModule = await resolveOpenClawGatewayClientModule(openClawEntryPath);
       await request({
         type: 'connect',
         payload: {
           openClawEntryPath,
           options,
+          clientModuleUrl: clientModule.moduleUrl,
+          gatewayClientExportName: clientModule.exportName,
         },
       }, connectTimeoutMs);
       this.connectionState = 'connected';

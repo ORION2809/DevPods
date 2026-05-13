@@ -85,6 +85,71 @@ class BridgeClient(
         }
     }
 
+    suspend fun pairing(pairingPageUrl: String): Result<TimedBridgeResult<RelayConfig>> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val startedAt = System.currentTimeMillis()
+                val request = Request.Builder()
+                    .url(pairingPageUrl)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        error(body.ifBlank { "Bridge pairing request failed with ${response.code}" })
+                    }
+
+                    val payload = parseRelayPairingPayloadRequest(body)
+                        ?: error("Bridge pairing response was invalid.")
+                    val relayToken = when {
+                        !payload.relayToken.isNullOrBlank() -> payload.relayToken
+                        !payload.pairingCode.isNullOrBlank() -> pairingVerify(pairingPageUrl, payload.pairingCode).getOrThrow().value
+                        else -> ""
+                    }
+                    val config = payload.toRelayConfig(relayToken)
+
+                    TimedBridgeResult(
+                        value = config,
+                        durationMs = System.currentTimeMillis() - startedAt,
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun pairingVerify(pairingPageUrl: String, pairingCode: String): Result<TimedBridgeResult<String>> {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val startedAt = System.currentTimeMillis()
+                val verifyUrl = "${pairingPageUrl.trimEnd('/')}/verify"
+                val request = Request.Builder()
+                    .url(verifyUrl)
+                    .post(
+                        json.encodeToString(mapOf("pairingCode" to pairingCode))
+                            .toRequestBody("application/json; charset=utf-8".toMediaType()),
+                    )
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        error(body.ifBlank { "Bridge pairing verify request failed with ${response.code}" })
+                    }
+
+                    val relayToken = parseRelayPairingVerifyResponse(body)
+                        ?: error("Bridge pairing verify response was invalid.")
+
+                    TimedBridgeResult(
+                        value = relayToken,
+                        durationMs = System.currentTimeMillis() - startedAt,
+                    )
+                }
+            }
+        }
+    }
+
     private fun Request.Builder.applyAuthorization(config: RelayConfig): Request.Builder {
         if (config.relayToken.isBlank()) {
             return this

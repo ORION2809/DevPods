@@ -516,6 +516,7 @@ export class JarvisRuntime {
           status: notification.status,
           actionId: activeActionId,
           detail: notification.display,
+          hardwareContext: null,
         });
 
         await this.notifyBackground?.(request.sessionId, notification);
@@ -532,6 +533,7 @@ export class JarvisRuntime {
           status: notification.status,
           actionId: activeActionId,
           detail: notification.display,
+          hardwareContext: null,
         });
 
         await this.notifyBackground?.(request.sessionId, notification);
@@ -557,6 +559,7 @@ export class JarvisRuntime {
           status: notification.status,
           actionId: activeActionId,
           detail: notification.display,
+          hardwareContext: null,
         });
 
         await this.notifyBackground?.(request.sessionId, notification);
@@ -579,6 +582,7 @@ export class JarvisRuntime {
         status: queuedResponse.status,
         actionId: activeActionId,
         detail: queuedResponse.display,
+        hardwareContext: null,
       });
 
       return queuedResponse;
