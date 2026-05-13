@@ -3,7 +3,7 @@
 	<img src="https://img.shields.io/badge/Node.js-Local_Runtime-5FA04E?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js runtime" />
 	<img src="https://img.shields.io/badge/OpenClaw-Integrated-111827?style=for-the-badge" alt="OpenClaw integrated" />
 	<img src="https://img.shields.io/badge/Android-Relay_MVP-34A853?style=for-the-badge&logo=android&logoColor=white" alt="Android relay MVP" />
-	<img src="https://img.shields.io/badge/Vitest-92_tests-729B1B?style=for-the-badge&logo=vitest&logoColor=white" alt="92 tests" />
+	<img src="https://img.shields.io/badge/Vitest-123_tests-729B1B?style=for-the-badge&logo=vitest&logoColor=white" alt="123 tests" />
 </p>
 
 # DevPods
@@ -13,7 +13,7 @@ DevPods turns earbuds into a developer control surface.
 The system captures earbud-style events, routes them through a local bridge with explicit policy and approval rules, optionally rewrites spoken responses with OpenClaw, and returns short, ear-safe responses back to the user. Today that loop is proven through a desktop-first bridge and an Android software relay MVP.
 
 > [!IMPORTANT]
-> Current status: DevPods is a validated software loop, not a finished hardware product. The current primary product surface is DevPods Relay on Android, backed by DevPods Bridge on desktop. Real BLE transport, custom firmware, and broader real-earbud Android validation are the next stages.
+> Current status: DevPods is a validated software loop with a working Android relay MVP. The bridge, runtime, and Android relay are build-clean, lint-clean, and fully tested. The Android relay now supports a **10-provider mesh** covering AirPods/Beats, Samsung Galaxy Buds, Sony, Nothing, Oppo/Realme/OnePlus, generic Bluetooth, MediaSession, Assistant fallback, and BLE GATT battery. Physical device validation is ongoing — MediaSession path is confirmed on realme RMX3990 (Android 16).
 
 > [!NOTE]
 > The primary CLI name is `devpods`. The legacy `jarvis-earbuds` binary is retained as a compatibility alias while internal filenames catch up.
@@ -69,20 +69,47 @@ The desktop simulator and CLI still matter, but they now support the Android-fir
 ### Android relay MVP
 
 - Foreground relay service
-- Compose product-demo UI with readiness, approval, and hardware-verification cards
+- Multi-tab product UI shell (Home, Activity, Device, Help, Developer mode) with onboarding, setup wizard, QR pairing, and diagnostic export
 - Speech recognition and TTS adapters
-- Headset/media-session wake path support
+- **10-provider earbud mesh** with priority-based fallback
 - Explicit approval, reject, and cancel actions
 - Installed-app emulator validation script for the debug APK
 
+### Earbud provider mesh
+
+The Android relay implements a layered provider system for broad physical earbud compatibility:
+
+| Priority | Provider | Brands | Key mechanism |
+|----------|----------|--------|---------------|
+| 1 | `apple_airpods` | AirPods, Beats | BLE proximity + L2CAP/AACP stem press |
+| 2 | `samsung_galaxy_buds` | Galaxy Buds 2/2 Pro/3 Pro/Live/FE/Pro | RFCOMM protocol + battery decode |
+| 3 | `sony_headphones` | WF-1000XM4/5, WH-1000XM4/5, LinkBuds | RFCOMM serial + capability detection |
+| 4 | `nothing_ear` | Nothing Ear 1/2/a, CMF Buds | RFCOMM serial |
+| 5 | `oppo_realme` | Oppo Enco, Realme Buds, OnePlus Buds | RFCOMM serial |
+| 6 | `librepods_airpods` | AirPods (legacy) | BLE proximity + AACP |
+| 7 | `android_media_session` | ALL Bluetooth audio | Media3 session universal fallback |
+| 8 | `assistant_entry` | ALL devices | Long-press assistant fallback |
+| 9 | `generic_bluetooth_headset` | ALL Bluetooth headsets | Connection + audio route awareness |
+| 10 | `generic_gatt_battery` | BLE devices with BAS | Standard GATT battery service |
+
+Each provider implements a common `EarbudSignalProvider` contract: identity, capability profile, device state, events, probe, start/stop. The `SignalProviderRegistry` manages priority, health tracking, and dynamic preferred-provider selection. Vendor-specific code is isolated in per-family packages under `signal/vendor/`. Shared transports (`BtClassicSerialTransport`, `L2capAapTransport`) are reused across providers.
+
 ### Validation
 
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- `android-relay\\gradlew.bat assembleDebug`
-- `android-relay\\gradlew.bat assembleRelease`
-- `simulation\\android-relay\\validate-installed-app.ps1`
+```bash
+# TypeScript bridge
+npm run typecheck   # tsc --noEmit
+npm run build       # tsc -p tsconfig.json
+npm test            # vitest run (123 tests)
+npm audit           # see SECURITY.md for advisory notes
+
+# Android relay
+cd android-relay
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
+./gradlew :app:lintDebug
+./gradlew :app:testDebugUnitTest
+```
 
 ## Key Capabilities
 
@@ -92,7 +119,8 @@ The desktop simulator and CLI still matter, but they now support the Android-fir
 | Developer actions | Quick status, diff summary, CI failure lookup, run tests, open file, commit message, commit staged, push, deploy, delete, revert |
 | Background work | Queueing by workspace, deferred notifications, queued cancellation, truthful running-task cancellation responses |
 | OpenClaw | Rewrite-only integration boundary with `http`, `local-cli`, and `gateway-client` transports |
-| Android | Debuggable relay app with validated emulator-installed flow and service-side automation path |
+| Android | 10-provider earbud mesh with priority fallback, health tracking, and setup proof |
+| Android install | Validated emulator flow + real-device install on realme RMX3990 (Android 16) |
 | Observability | Health endpoint, audit log, rewrite metadata, action ids, and relay service logs |
 
 ## Architecture
@@ -131,6 +159,16 @@ npm install
 ```bash
 npm run devpods -- start --port 4545
 ```
+
+For Android relay onboarding on a trusted LAN, prefer a LAN-reachable host or set an explicit pairing base URL:
+
+```bash
+npm run devpods -- start --host 0.0.0.0 --relay-token relay-secret --pairing-base-url http://192.168.1.10:4545
+```
+
+When pairing is available, the bridge now prints both a browser-usable pairing page and the underlying `devpods://pair` link. Open the printed pairing page on the phone, then tap the pairing button to launch DevPods Relay.
+
+The pairing page also works as a desktop onboarding surface now: it renders a QR code for the pairing page URL so the Android relay can scan the bridge directly from the desktop screen.
 
 Or run the compiled CLI directly:
 
@@ -201,7 +239,19 @@ What is validated today:
 - cancel, second prompt, approve, and stop
 - explicit `pendingActionId` forwarding and stale-state cleanup checks
 - bounded autonomy loop for safe background work: spoken completion report, silence-driven continuation, and interrupt-to-replan
+- first-pass pairing flow through `GET /pairing`, printed bridge pairing page URLs, and staged `devpods://pair` import on Android
+- QR pairing flow through the bridge pairing page and the Android relay Pairing card
 - real-device field notes for RMX3990 + realme Buds Air7 in [docs/10-rmx3990-buds-air7-field-notes.md](docs/10-rmx3990-buds-air7-field-notes.md)
+
+## Portable Windows Bridge
+
+For a lightweight desktop package without introducing a new desktop framework, build the portable bridge bundle:
+
+```powershell
+npm run package:bridge:windows
+```
+
+That creates `artifacts/windows-bridge/DevPodsBridgePortable` with the compiled bridge, a Windows launcher, a default bridge config, and the pairing page flow. Launch `start-devpods-bridge.cmd`, then scan the QR from the Android relay Pairing card.
 
 Run the Android relay smoke harness against the bridge:
 
@@ -258,7 +308,7 @@ cd ..
 .\simulation\android-relay\validate-installed-app.ps1
 ```
 
-The current automated test suite covers 15 test files and 95 tests.
+The current automated test suite covers 19 test files and 123 tests.
 
 ## Repository Layout
 
