@@ -44,8 +44,15 @@ try {
 
 # Gate 3: Bridge tests
 try {
-    $testOutput = npm test 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $testOutput = npm test 2>&1
+        $testExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($testExitCode -eq 0) {
         $testCount = [regex]::Match($testOutput, '(\d+) passed').Groups[1].Value
         Write-Gate "Bridge tests" "PASS" "$testCount tests passed"
     } else {
@@ -84,13 +91,29 @@ try {
 # Gate 6: Android build
 Write-Host ""
 Write-Host "--- Android Relay ---" -ForegroundColor DarkCyan
-$gradle = Join-Path $PSScriptRoot "android-relay" "gradlew.bat"
+$androidDir = Join-Path $PSScriptRoot "android-relay"
+$gradle = Join-Path $androidDir "gradlew.bat"
 if (-not (Test-Path $gradle)) {
-    $gradle = Join-Path (Get-Location) "android-relay" "gradlew.bat"
+    $androidDir = Join-Path (Get-Location).Path "android-relay"
+    $gradle = Join-Path $androidDir "gradlew.bat"
+}
+
+function Invoke-AndroidGradle {
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $GradleArgs
+    )
+
+    Push-Location $androidDir
+    try {
+        & $gradle @GradleArgs
+    } finally {
+        Pop-Location
+    }
 }
 
 try {
-    & $gradle :app:assembleDebug --quiet 2>$null
+    Invoke-AndroidGradle :app:assembleDebug --quiet 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Gate "Android debug APK" "PASS"
     } else {
@@ -103,7 +126,7 @@ try {
 
 # Gate 7: Android release build
 try {
-    & $gradle :app:assembleRelease --quiet 2>$null
+    Invoke-AndroidGradle :app:assembleRelease --quiet 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Gate "Android release APK" "PASS"
     } else {
@@ -116,7 +139,7 @@ try {
 
 # Gate 8: Android lint
 try {
-    $lintOutput = & $gradle :app:lintDebug --quiet 2>&1
+    $lintOutput = Invoke-AndroidGradle :app:lintDebug --quiet 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Gate "Android lint" "PASS"
     } else {
@@ -129,7 +152,7 @@ try {
 
 # Gate 9: Android unit tests
 try {
-    & $gradle :app:testDebugUnitTest --quiet 2>$null
+    Invoke-AndroidGradle :app:testDebugUnitTest --quiet 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Gate "Android unit tests" "PASS"
     } else {
