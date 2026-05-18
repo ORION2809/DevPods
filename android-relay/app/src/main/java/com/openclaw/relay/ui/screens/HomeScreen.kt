@@ -288,8 +288,16 @@ private fun StatusChipsRow(state: RelayUiState) {
             style = if (state.speechRecognitionAvailable) ChipStyle.Success else ChipStyle.Error,
         )
         DevPodsChip(
-            text = if (state.audioRoute.isReadyForSpeechCapture) "Using earbuds mic" else "Using phone mic",
-            style = if (state.audioRoute.isReadyForSpeechCapture) ChipStyle.Success else ChipStyle.Info,
+            text = when {
+                state.audioRoute.isPhoneMicFallback -> "Phone mic fallback"
+                state.audioRoute.isReadyForSpeechCapture -> "Using earbuds mic"
+                else -> "Mic route unverified"
+            },
+            style = when {
+                state.audioRoute.isPhoneMicFallback -> ChipStyle.Warning
+                state.audioRoute.isReadyForSpeechCapture -> ChipStyle.Success
+                else -> ChipStyle.Info
+            },
         )
     }
 }

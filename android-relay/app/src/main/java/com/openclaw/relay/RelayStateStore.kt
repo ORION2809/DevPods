@@ -22,6 +22,10 @@ object RelayStateStore {
                 useBluetoothRouting = current.config.useBluetoothRouting,
                 phoneMicFallback = current.config.phoneMicFallback,
                 assistantFallback = current.config.assistantFallback,
+                speechInputMode = current.config.speechInputMode,
+                offlineSpeechModelPath = current.config.offlineSpeechModelPath,
+                offlineSpeechModelVersion = current.config.offlineSpeechModelVersion,
+                offlineSpeechModelSha256 = current.config.offlineSpeechModelSha256,
             )
             current.copy(
                 config = preservedConfig,
@@ -162,6 +166,143 @@ object RelayStateStore {
 
     fun setAudioRoute(snapshot: RelayAudioRouteSnapshot) {
         mutableState.update { it.copy(audioRoute = snapshot) }
+    }
+
+    fun recordSpeechSessionMetrics(metrics: SpeechSessionMetrics) {
+        mutableState.update {
+            val diagnostics = it.voiceDiagnostics
+            it.copy(
+                voiceDiagnostics = diagnostics.copy(
+                    lastSpeechSession = metrics,
+                    lastVadObservation = metrics.toPlatformVadObservation(),
+                    voiceProofRun = diagnostics.voiceProofRun.recordSpeechSession(metrics),
+                ),
+            )
+        }
+    }
+
+    fun recordTtsPlaybackMetrics(metrics: TtsPlaybackMetrics) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    lastTtsPlayback = metrics,
+                ),
+            )
+        }
+    }
+
+    fun recordTtsInterruptionMetrics(metrics: TtsInterruptionMetrics) {
+        mutableState.update {
+            val diagnostics = it.voiceDiagnostics
+            it.copy(
+                voiceDiagnostics = diagnostics.copy(
+                    lastTtsInterruption = metrics,
+                    voiceProofRun = diagnostics.voiceProofRun.recordTtsInterruption(metrics),
+                ),
+            )
+        }
+    }
+
+    fun recordAudioProbeMetrics(metrics: AudioProbeMetrics) {
+        mutableState.update {
+            val diagnostics = it.voiceDiagnostics
+            it.copy(
+                voiceDiagnostics = diagnostics.copy(
+                    lastAudioProbe = metrics,
+                    voiceProofRun = diagnostics.voiceProofRun.recordAudioProbe(metrics),
+                ),
+            )
+        }
+    }
+
+    fun recordOfflineSpeechReadiness(readiness: OfflineSpeechReadiness) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    offlineSpeechReadiness = readiness,
+                ),
+            )
+        }
+    }
+
+    fun recordMediaButtonEvent(event: MediaButtonEventTelemetry) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    lastMediaButtonEvent = event,
+                ),
+            )
+        }
+    }
+
+    fun recordForegroundControls(controls: ForegroundControlSnapshot) {
+        mutableState.update {
+            val currentForeground = it.voiceDiagnostics.foregroundService
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    foregroundControls = controls,
+                    foregroundService = currentForeground.copy(
+                        notificationControls = controls,
+                        updatedAtMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+    }
+
+    fun recordForegroundServiceSnapshot(snapshot: RelayForegroundServiceSnapshot) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    foregroundService = snapshot,
+                    foregroundControls = snapshot.notificationControls,
+                ),
+            )
+        }
+    }
+
+    fun applyServiceRecoveryPlan(plan: RelayServiceRecoveryPlan) {
+        mutableState.update { current ->
+            current.copy(
+                isListening = if (plan.restoreListening) current.isListening else false,
+                isSpeaking = if (plan.restoreSpeaking) current.isSpeaking else false,
+                isAwaitingBridgeResponse = if (plan.restoreAwaitingBridge) current.isAwaitingBridgeResponse else false,
+                pendingActionId = if (plan.clearPendingTransientAction) null else current.pendingActionId,
+                activeAutonomy = if (plan.clearTransientAutonomy) null else current.activeAutonomy,
+                autonomyUiState = if (plan.clearTransientAutonomy) AutonomyUiState() else current.autonomyUiState,
+                voiceDiagnostics = current.voiceDiagnostics.copy(
+                    foregroundService = current.voiceDiagnostics.foregroundService.copy(
+                        restoredAfterRestart = plan.shouldRestartForeground,
+                        recoveryReason = plan.reason,
+                        updatedAtMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+    }
+
+    fun startVoiceProofRun(targetSessionCount: Int = VoiceProofRun.DEFAULT_TARGET_SESSION_COUNT) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    voiceProofRun = VoiceProofRun.start(
+                        runId = "voice-proof-${System.currentTimeMillis()}",
+                        targetSessionCount = targetSessionCount,
+                        startedAtMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        }
+    }
+
+    fun resetVoiceProofRun() {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    voiceProofRun = VoiceProofRun(),
+                ),
+            )
+        }
     }
 
     fun setPartialTranscript(value: String) {
@@ -414,6 +555,9 @@ internal fun resolveUserFacingError(message: String?): String? {
         lower.contains("microphone permission") || lower.contains("record_audio") ||
             lower.contains("insufficient_permissions") || lower.contains("microphone error") ->
             "Microphone permission is denied. Go to Settings > Apps > DevPods Relay > Permissions, and allow Microphone."
+
+        lower.contains("enable phone microphone fallback") ->
+            "Earbud microphone routing failed. Enable Phone microphone fallback in Device settings, or reconnect your earbuds and try again."
 
         lower.contains("no earbud") || (lower.contains("headset") && lower.contains("disconnect")) ||
             lower.contains("bluetooth routing failed") || lower.contains("no communication headset") ||

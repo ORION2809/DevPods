@@ -141,5 +141,4 @@ These are documented as expected limitations, not bugs:
 - [x] Setup coroutine cleanup hardened with `try/finally`
 - [x] All build gates green
 - [x] No new lint errors introduced
-
 **Verdict:** The implementation is now robust enough for the milestone. The two confirmed bugs are fixed. The one unconfirmed crash is mitigated with defensive `try/finally` guards. Physical hardware validation remains the next step.

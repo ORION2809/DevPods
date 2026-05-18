@@ -11,6 +11,7 @@ class RelayCommandAuthTest {
         assertTrue(relayCommandRequiresAuth(RelayService.ACTION_WAKE_AND_LISTEN))
         assertTrue(relayCommandRequiresAuth(RelayService.ACTION_ASSIST_LONG_PRESS))
         assertTrue(relayCommandRequiresAuth(RelayService.ACTION_APPROVE))
+        assertTrue(relayCommandRequiresAuth(RelayService.ACTION_AUDIO_ROUTE_PROBE))
         assertFalse(relayCommandRequiresAuth("androidx.media3.session.MediaSessionService"))
         assertFalse(relayCommandRequiresAuth(null))
     }

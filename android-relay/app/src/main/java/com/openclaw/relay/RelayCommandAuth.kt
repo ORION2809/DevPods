@@ -24,6 +24,7 @@ internal fun relayCommandRequiresAuth(action: String?): Boolean {
         RelayService.ACTION_CANCEL,
         RelayService.ACTION_RETRY_QUEUE,
         RelayService.ACTION_DISCARD_QUEUE,
+        RelayService.ACTION_AUDIO_ROUTE_PROBE,
         RelayService.ACTION_DEBUG_EVENT,
     )
 }

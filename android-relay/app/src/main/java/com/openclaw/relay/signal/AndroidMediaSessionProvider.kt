@@ -5,6 +5,12 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import android.view.KeyEvent
+import com.openclaw.relay.MediaButtonAction
+import com.openclaw.relay.MediaButtonDiagnostics
+import com.openclaw.relay.MediaButtonEventDebouncer
+import com.openclaw.relay.RelayStateStore
+import com.openclaw.relay.RelayService
+import com.openclaw.relay.buildRelayServiceIntent
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
@@ -63,6 +69,7 @@ class AndroidMediaSessionProvider(
     private var mediaSession: MediaSession? = null
     @Volatile
     private var hasPrimedSession = false
+    private val mediaButtonDebouncer = MediaButtonEventDebouncer()
 
     @Suppress("UnsafeOptInUsageError")
     fun mediaSession(): MediaSession? = mediaSession
@@ -165,17 +172,45 @@ class AndroidMediaSessionProvider(
                         intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
                     } ?: return super.onMediaButtonEvent(session, controllerInfo, intent)
 
+                    val action = when (keyEvent.action) {
+                        KeyEvent.ACTION_DOWN -> MediaButtonAction.DOWN
+                        KeyEvent.ACTION_UP -> MediaButtonAction.UP
+                        else -> MediaButtonAction.UNKNOWN
+                    }
+                    val receivedAtMs = System.currentTimeMillis()
+                    val baseTelemetry = MediaButtonDiagnostics.normalize(
+                        keyCode = keyEvent.keyCode,
+                        action = action,
+                        repeatCount = keyEvent.repeatCount,
+                        receivedAtMs = receivedAtMs,
+                        routeState = RelayStateStore.state.value.audioRoute.proof.routeState,
+                        serviceRunning = RelayStateStore.state.value.isServiceRunning,
+                    )
+
                     if (!isWakeMediaButtonKey(keyEvent.keyCode)) {
+                        RelayStateStore.recordMediaButtonEvent(baseTelemetry.copy(accepted = false))
                         return super.onMediaButtonEvent(session, controllerInfo, intent)
                     }
 
                     when (keyEvent.action) {
                         KeyEvent.ACTION_DOWN -> {
                             if (keyEvent.repeatCount != 0) {
+                                RelayStateStore.recordMediaButtonEvent(baseTelemetry.copy(accepted = false))
                                 return true
                             }
+                            if (!mediaButtonDebouncer.accepts(keyEvent.keyCode, action, receivedAtMs)) {
+                                RelayStateStore.recordMediaButtonEvent(
+                                    baseTelemetry.copy(
+                                        accepted = false,
+                                        debounced = true,
+                                    )
+                                )
+                                return true
+                            }
+                            RelayStateStore.recordMediaButtonEvent(baseTelemetry)
                             when (keyEvent.keyCode) {
                                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                                    markGestureObserved(GestureType.DOUBLE_PRESS)
                                     _events.trySend(
                                         EarbudSignalEvent.InterruptGesture(
                                             providerId = providerId,
@@ -186,6 +221,7 @@ class AndroidMediaSessionProvider(
                                     )
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                                    markGestureObserved(GestureType.TRIPLE_PRESS)
                                     _events.trySend(
                                         EarbudSignalEvent.ApprovalGesture(
                                             providerId = providerId,
@@ -195,15 +231,22 @@ class AndroidMediaSessionProvider(
                                         )
                                     )
                                 }
+                                KeyEvent.KEYCODE_MEDIA_STOP -> {
+                                    context.startService(buildRelayServiceIntent(context, RelayService.ACTION_STOP_RELAY))
+                                }
                                 else -> {
                                     tapDetector.onButtonDown()
                                 }
                             }
                         }
                         KeyEvent.ACTION_UP -> {
+                            RelayStateStore.recordMediaButtonEvent(baseTelemetry)
                             when (keyEvent.keyCode) {
                                 KeyEvent.KEYCODE_MEDIA_NEXT,
                                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                                    // Already handled on ACTION_DOWN; ignore UP.
+                                }
+                                KeyEvent.KEYCODE_MEDIA_STOP -> {
                                     // Already handled on ACTION_DOWN; ignore UP.
                                 }
                                 else -> {
@@ -278,6 +321,7 @@ class AndroidMediaSessionProvider(
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_NEXT,
             KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+            KeyEvent.KEYCODE_MEDIA_STOP,
             -> true
             else -> false
         }

@@ -15,10 +15,13 @@ class AndroidTtsSpeaker(
     private val onError: (String) -> Unit = {},
     private val onReadyChanged: (Boolean) -> Unit = {},
     private val onSpeakingChanged: (Boolean) -> Unit = {},
+    private val onPlaybackMetrics: (TtsPlaybackMetrics) -> Unit = {},
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val applicationContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val completionCallbacks = ConcurrentHashMap<String, () -> Unit>()
+    private val playbackRecorders = ConcurrentHashMap<String, TtsPlaybackMetricsRecorder>()
     private var textToSpeech: TextToSpeech? = null
     private var ready = false
 
@@ -42,10 +45,18 @@ class AndroidTtsSpeaker(
             textToSpeech?.setSpeechRate(1.05f)
             textToSpeech?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
+                    utteranceId?.let(playbackRecorders::get)?.let { recorder ->
+                        recorder.markStarted(clock())
+                        onPlaybackMetrics(recorder.snapshot())
+                    }
                     onSpeakingChanged(true)
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    utteranceId?.let(playbackRecorders::remove)?.let { recorder ->
+                        recorder.markDone(clock())
+                        onPlaybackMetrics(recorder.snapshot())
+                    }
                     onSpeakingChanged(false)
                     completionCallbacks.remove(utteranceId)?.let { callback ->
                         mainHandler.post(callback)
@@ -54,12 +65,20 @@ class AndroidTtsSpeaker(
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
+                    utteranceId?.let(playbackRecorders::remove)?.let { recorder ->
+                        recorder.markError(clock(), errorCode = null)
+                        onPlaybackMetrics(recorder.snapshot())
+                    }
                     onSpeakingChanged(false)
                     completionCallbacks.remove(utteranceId)
                     this@AndroidTtsSpeaker.onError("Text-to-speech playback failed.")
                 }
 
                 override fun onError(utteranceId: String?, errorCode: Int) {
+                    utteranceId?.let(playbackRecorders::remove)?.let { recorder ->
+                        recorder.markError(clock(), errorCode = errorCode)
+                        onPlaybackMetrics(recorder.snapshot())
+                    }
                     onSpeakingChanged(false)
                     completionCallbacks.remove(utteranceId)
                     this@AndroidTtsSpeaker.onError("Text-to-speech playback failed with error code $errorCode.")
@@ -68,7 +87,7 @@ class AndroidTtsSpeaker(
         }
     }
 
-    fun speak(text: String, onComplete: (() -> Unit)? = null) {
+    fun speak(text: String, utteranceId: String? = null, onComplete: (() -> Unit)? = null) {
         if (!ready || text.isBlank()) {
             if (text.isNotBlank() && !ready) {
                 onError("Text-to-speech is not ready yet.")
@@ -76,16 +95,30 @@ class AndroidTtsSpeaker(
             return
         }
 
-        val utteranceId = "relay-${System.currentTimeMillis()}"
+        val requestedAtMs = clock()
+        val resolvedUtteranceId = utteranceId ?: "relay-$requestedAtMs"
+        val recorder = TtsPlaybackMetricsRecorder(
+            utteranceId = resolvedUtteranceId,
+            textLength = text.length,
+            requestedAtMs = requestedAtMs,
+        )
+        playbackRecorders[resolvedUtteranceId] = recorder
+        onPlaybackMetrics(recorder.snapshot())
         if (onComplete != null) {
-            completionCallbacks[utteranceId] = onComplete
+            completionCallbacks[resolvedUtteranceId] = onComplete
         }
-        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, resolvedUtteranceId)
     }
 
     fun stop() {
+        val requestedAtMs = clock()
+        playbackRecorders.values.forEach { recorder ->
+            recorder.markStopped(clock(), requestedAtMs)
+            onPlaybackMetrics(recorder.snapshot())
+        }
         onSpeakingChanged(false)
         completionCallbacks.clear()
+        playbackRecorders.clear()
         textToSpeech?.stop()
     }
 
@@ -93,6 +126,7 @@ class AndroidTtsSpeaker(
         onSpeakingChanged(false)
         onReadyChanged(false)
         completionCallbacks.clear()
+        playbackRecorders.clear()
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null

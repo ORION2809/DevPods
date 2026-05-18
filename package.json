@@ -19,16 +19,12 @@
     "send:event": "tsx simulation/fake-earbud-events/send-event.ts",
     "say": "tsx simulation/fake-earbud-events/say.ts",
     "relay:smoke": "tsx simulation/android-relay/smoke.ts",
-    "openclaw:smoke": "tsx simulation/openclaw-sandbox/smoke.ts",
-    "openclaw:latency:smoke": "tsx simulation/openclaw-latency/smoke.ts",
-    "openclaw:managed:smoke": "tsx simulation/openclaw-managed/smoke.ts",
     "audit:allowlist": "tsx scripts/audit-allowlist.ts --audit-level=moderate",
     "audit:allowlist:strict": "tsx scripts/audit-allowlist.ts --audit-level=low",
     "verify:product": "powershell -NoProfile -ExecutionPolicy Bypass -File ./verify-product.ps1"
   },
   "dependencies": {
     "json5": "^2.2.3",
-    "openclaw": "^2026.4.27",
     "qrcode": "^1.5.4",
     "zod": "^3.24.1"
   },

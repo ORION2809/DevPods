@@ -2,7 +2,11 @@ package com.openclaw.relay.diagnostic
 
 import android.content.Context
 import android.content.Intent
+import com.openclaw.relay.AudioRouteProofState
 import com.openclaw.relay.RelayUiState
+import com.openclaw.relay.SpeechEndpointReason
+import com.openclaw.relay.TtsPlaybackEvent
+import com.openclaw.relay.VoiceProofRunStatus
 import com.openclaw.relay.device.DeviceCapabilityMatrix
 import com.openclaw.relay.device.DeviceProfileStorage
 import kotlinx.serialization.Serializable
@@ -44,6 +48,7 @@ object DiagnosticExport {
         val capabilityMatrix: DeviceCapabilityMatrix,
         val recentErrors: List<String>,
         val setupPhase: String,
+        val voice: RedactedVoiceDiagnostics,
     )
 
     @Serializable
@@ -70,6 +75,90 @@ object DiagnosticExport {
         val confidence: String,
         val deviceModel: String?,
         val capabilities: List<String>,
+    )
+
+    @Serializable
+    data class RedactedVoiceDiagnostics(
+        val speechSessionId: String? = null,
+        val speechEngine: String? = null,
+        val endpointReason: String = SpeechEndpointReason.LISTENING.name.lowercase(),
+        val routeState: String = AudioRouteProofState.ROUTE_UNKNOWN.name.lowercase(),
+        val routeSettleMs: Long? = null,
+        val phoneMicFallbackActive: Boolean = false,
+        val rmsFrameCount: Int = 0,
+        val rmsPeakDb: Float? = null,
+        val speechDetected: Boolean = false,
+        val wrongMicSuspected: Boolean = false,
+        val finalTranscriptLength: Int = 0,
+        val ttsEvent: String? = null,
+        val ttsStartDelayMs: Long? = null,
+        val ttsStopLatencyMs: Long? = null,
+        val ttsBargeInLatencyMs: Long? = null,
+        val ttsInterruptionTargetMet: Boolean? = null,
+        val selectedDeviceType: String? = null,
+        val audioProbeStatus: String? = null,
+        val audioProbeSource: String? = null,
+        val audioProbeDurationMs: Long? = null,
+        val audioProbeNonZeroFrameRatio: Float? = null,
+        val audioProbePeakAmplitude: Float? = null,
+        val audioProbeReadErrorCount: Int? = null,
+        val offlineRequestedMode: String,
+        val offlineActiveEngine: String,
+        val offlineCanRun: Boolean,
+        val offlineModelVersion: String? = null,
+        val offlineModelFootprintBytes: Long = 0L,
+        val offlineFailureReasons: List<String> = emptyList(),
+        val lastMediaButton: RedactedMediaButtonEvent? = null,
+        val foregroundControls: RedactedForegroundControls = RedactedForegroundControls(),
+        val foregroundService: RedactedForegroundService = RedactedForegroundService(),
+        val proofRun: RedactedVoiceProofRun? = null,
+    )
+
+    @Serializable
+    data class RedactedMediaButtonEvent(
+        val keyLabel: String,
+        val action: String,
+        val mapping: String,
+        val accepted: Boolean,
+        val debounced: Boolean,
+        val routeState: String,
+        val serviceRunning: Boolean,
+    )
+
+    @Serializable
+    data class RedactedForegroundControls(
+        val pushToTalk: Boolean = false,
+        val retryQueue: Boolean = false,
+        val cancelCurrentAction: Boolean = false,
+        val stopRelay: Boolean = false,
+        val actionCount: Int = 0,
+        val missingControls: List<String> = emptyList(),
+    )
+
+    @Serializable
+    data class RedactedForegroundService(
+        val active: Boolean = false,
+        val mediaSessionReady: Boolean = false,
+        val foregroundServiceTypeMask: Int = 0,
+        val complete: Boolean = false,
+        val restoredAfterRestart: Boolean = false,
+        val recoveryReason: String? = null,
+        val lastStartAction: String? = null,
+    )
+
+    @Serializable
+    data class RedactedVoiceProofRun(
+        val status: String,
+        val targetSessionCount: Int,
+        val completedSessionCount: Int,
+        val successfulSessionCount: Int,
+        val routeSuccessCount: Int,
+        val routeFailureCount: Int,
+        val sttSuccessCount: Int,
+        val wrongMicSuspectedCount: Int,
+        val reliabilityPercent: Int,
+        val audioProbeSuccessCount: Int,
+        val failureReasons: List<String>,
     )
 
     fun build(
@@ -125,6 +214,7 @@ object DiagnosticExport {
                 state.errorMessage?.let { "general: ${redactErrorMessage(it)}" },
             ) else emptyList(),
             setupPhase = state.setupPhase.name.lowercase(),
+            voice = buildVoiceDiagnostics(state, options),
         )
     }
 
@@ -181,6 +271,105 @@ object DiagnosticExport {
             "assistant_entry" -> "Device assistant"
             else -> "Unknown provider"
         }
+    }
+
+    private fun buildVoiceDiagnostics(
+        state: RelayUiState,
+        options: DiagnosticExportOptions,
+    ): RedactedVoiceDiagnostics {
+        val speech = state.voiceDiagnostics.lastSpeechSession
+        val vad = state.voiceDiagnostics.lastVadObservation
+        val tts = state.voiceDiagnostics.lastTtsPlayback
+        val interruption = state.voiceDiagnostics.lastTtsInterruption
+        val probe = state.voiceDiagnostics.lastAudioProbe
+        val proofRun = state.voiceDiagnostics.voiceProofRun
+        val proofSummary = proofRun.summary
+        val offline = state.voiceDiagnostics.offlineSpeechReadiness
+        val mediaButton = state.voiceDiagnostics.lastMediaButtonEvent
+        val foregroundControls = state.voiceDiagnostics.foregroundControls
+        val foregroundService = state.voiceDiagnostics.foregroundService
+        return RedactedVoiceDiagnostics(
+            speechSessionId = speech?.sessionId,
+            speechEngine = speech?.engineId,
+            endpointReason = speech?.endpointReason?.name?.lowercase()
+                ?: SpeechEndpointReason.LISTENING.name.lowercase(),
+            routeState = speech?.routeProof?.routeState?.name?.lowercase()
+                ?: state.audioRoute.proof.routeState.name.lowercase(),
+            routeSettleMs = speech?.routeSettleMs ?: state.audioRoute.proof.routeSettleMs,
+            phoneMicFallbackActive = state.audioRoute.isPhoneMicFallback,
+            rmsFrameCount = speech?.rmsFrameCount ?: 0,
+            rmsPeakDb = speech?.rmsPeakDb,
+            speechDetected = vad?.speechDetected ?: false,
+            wrongMicSuspected = vad?.wrongMicSuspected ?: false,
+            finalTranscriptLength = speech?.finalTranscriptLength ?: 0,
+            ttsEvent = tts?.event?.name?.lowercase() ?: TtsPlaybackEvent.REQUESTED.name.lowercase(),
+            ttsStartDelayMs = tts?.startDelayMs,
+            ttsStopLatencyMs = tts?.stopLatencyMs,
+            ttsBargeInLatencyMs = interruption?.bargeInLatencyMs,
+            ttsInterruptionTargetMet = interruption?.targetMet,
+            selectedDeviceType = if (options.includeRawRoute) {
+                speech?.routeProof?.selectedDeviceType ?: state.audioRoute.proof.selectedDeviceType
+            } else {
+                null
+            },
+            audioProbeStatus = probe?.initStatus?.name?.lowercase(),
+            audioProbeSource = probe?.audioSource,
+            audioProbeDurationMs = probe?.durationMs,
+            audioProbeNonZeroFrameRatio = probe?.nonZeroFrameRatio,
+            audioProbePeakAmplitude = probe?.peakAmplitude,
+            audioProbeReadErrorCount = probe?.readErrorCount,
+            offlineRequestedMode = offline.requestedMode.name.lowercase(),
+            offlineActiveEngine = offline.activeEngineId,
+            offlineCanRun = offline.canRunOffline,
+            offlineModelVersion = offline.modelVersion,
+            offlineModelFootprintBytes = offline.modelFootprintBytes,
+            offlineFailureReasons = offline.failureReasons,
+            lastMediaButton = mediaButton?.let {
+                RedactedMediaButtonEvent(
+                    keyLabel = it.keyLabel,
+                    action = it.action.name.lowercase(),
+                    mapping = it.mapping,
+                    accepted = it.accepted,
+                    debounced = it.debounced,
+                    routeState = it.routeState.name.lowercase(),
+                    serviceRunning = it.serviceRunning,
+                )
+            },
+            foregroundControls = RedactedForegroundControls(
+                pushToTalk = foregroundControls.hasPushToTalk,
+                retryQueue = foregroundControls.hasRetryQueue,
+                cancelCurrentAction = foregroundControls.hasCancelCurrentAction,
+                stopRelay = foregroundControls.hasStopRelay,
+                actionCount = foregroundControls.actionCount,
+                missingControls = foregroundControls.missingRequiredActions,
+            ),
+            foregroundService = RedactedForegroundService(
+                active = foregroundService.isForegroundActive,
+                mediaSessionReady = foregroundService.mediaSessionReady,
+                foregroundServiceTypeMask = foregroundService.foregroundServiceTypeMask,
+                complete = foregroundService.isComplete,
+                restoredAfterRestart = foregroundService.restoredAfterRestart,
+                recoveryReason = foregroundService.recoveryReason,
+                lastStartAction = foregroundService.lastStartAction,
+            ),
+            proofRun = if (proofRun.status == VoiceProofRunStatus.NOT_STARTED) {
+                null
+            } else {
+                RedactedVoiceProofRun(
+                    status = proofRun.status.name.lowercase(),
+                    targetSessionCount = proofSummary.targetSessionCount,
+                    completedSessionCount = proofSummary.completedSessionCount,
+                    successfulSessionCount = proofSummary.successfulSessionCount,
+                    routeSuccessCount = proofSummary.routeSuccessCount,
+                    routeFailureCount = proofSummary.routeFailureCount,
+                    sttSuccessCount = proofSummary.sttSuccessCount,
+                    wrongMicSuspectedCount = proofSummary.wrongMicSuspectedCount,
+                    reliabilityPercent = proofSummary.reliabilityPercent,
+                    audioProbeSuccessCount = proofSummary.audioProbeSuccessCount,
+                    failureReasons = proofSummary.failureReasons,
+                )
+            },
+        )
     }
 
     private fun describeEarState(earState: com.openclaw.relay.signal.EarState?): String {

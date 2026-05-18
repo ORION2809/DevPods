@@ -10,6 +10,10 @@ data class RelayConfig(
     val useBluetoothRouting: Boolean = true,
     val phoneMicFallback: Boolean = false,
     val assistantFallback: Boolean = true,
+    val speechInputMode: SpeechInputMode = SpeechInputMode.PLATFORM,
+    val offlineSpeechModelPath: String = "",
+    val offlineSpeechModelVersion: String = "",
+    val offlineSpeechModelSha256: String = "",
 )
 
 fun RelayConfig.isPaired(): Boolean = bridgeBaseUrl.trim().isNotBlank()
@@ -34,12 +38,14 @@ data class RelayWakeSignal(
 data class RelayAudioRouteSnapshot(
     val isActive: Boolean = false,
     val isReadyForSpeechCapture: Boolean = false,
+    val isPhoneMicFallback: Boolean = false,
     val status: String = "Not verified",
     val selectedDeviceName: String? = null,
     val selectedDeviceType: String? = null,
     val communicationDeviceName: String? = null,
     val communicationDeviceType: String? = null,
     val availableDevices: String = "none",
+    val proof: AudioRouteProof = AudioRouteProof(),
 )
 
 data class BridgeQueueState(
@@ -102,6 +108,7 @@ data class RelayUiState(
     val activityHistory: List<com.openclaw.relay.history.ActivityHistoryEntry> = emptyList(),
     val providerHealth: List<com.openclaw.relay.signal.ProviderHealthUi> = emptyList(),
     val preferredProviderId: String? = null,
+    val voiceDiagnostics: VoiceDiagnosticsSnapshot = VoiceDiagnosticsSnapshot(),
 ) {
     val pendingApprovalSummary: String?
         get() = pendingApprovalRequest?.summary

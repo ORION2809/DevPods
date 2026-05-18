@@ -49,6 +49,7 @@ class RelayService : MediaSessionService() {
         const val ACTION_CANCEL = "com.openclaw.relay.action.CANCEL"
         const val ACTION_RETRY_QUEUE = "com.openclaw.relay.action.RETRY_QUEUE"
         const val ACTION_DISCARD_QUEUE = "com.openclaw.relay.action.DISCARD_QUEUE"
+        const val ACTION_AUDIO_ROUTE_PROBE = "com.openclaw.relay.action.AUDIO_ROUTE_PROBE"
         const val ACTION_DEBUG_EVENT = "com.openclaw.relay.action.DEBUG_EVENT"
 
         const val EXTRA_TRIGGER = "trigger"
@@ -74,28 +75,57 @@ class RelayService : MediaSessionService() {
     private var bridgeRetryAttempt = 0
     private var bridgeRetryJob: kotlinx.coroutines.Job? = null
     private var interruptedWakeSignal: RelayWakeSignal? = null
+    private var activeSpeechRecorder: SpeechSessionMetricsRecorder? = null
+    private var activeTtsInterruptionRecorder: TtsInterruptionMetricsRecorder? = null
 
     private data class PendingBridgeEvent(
         val event: RelayBridgeEvent,
         val onSpeechComplete: (() -> Unit)?,
     )
 
-    private lateinit var speechRecognizer: AndroidSpeechRecognizer
-    private lateinit var ttsSpeaker: AndroidTtsSpeaker
+    private lateinit var speechInputEngine: SpeechInputEngine
+    private lateinit var speechOutputEngine: SpeechOutputEngine
     private lateinit var audioRouter: BluetoothAudioRouter
     private lateinit var signalProviderRegistry: com.openclaw.relay.signal.SignalProviderRegistry
 
     override fun onCreate() {
         super.onCreate()
-        speechRecognizer = AndroidSpeechRecognizer(this)
-        RelayStateStore.setSpeechRecognitionAvailable(speechRecognizer.isRecognitionAvailable())
+        RelayStateStore.applyServiceRecoveryPlan(RelayServiceRecoveryPolicy.plan(RelayStateStore.state.value))
+        speechInputEngine = SpeechInputEngineFactory.create(this, RelayStateStore.state.value.config)
+        RelayStateStore.setSpeechRecognitionAvailable(speechInputEngine.capabilities().isAvailable)
         RelayStateStore.setTtsReady(false)
-        ttsSpeaker = AndroidTtsSpeaker(
+        val ttsSpeaker = AndroidTtsSpeaker(
             this,
             onError = RelayStateStore::recordTtsError,
             onReadyChanged = RelayStateStore::setTtsReady,
             onSpeakingChanged = RelayStateStore::markSpeaking,
+            onPlaybackMetrics = { metrics ->
+                RelayStateStore.recordTtsPlaybackMetrics(metrics)
+                if (metrics.event == TtsPlaybackEvent.STOPPED) {
+                    activeTtsInterruptionRecorder?.let { recorder ->
+                        recorder.markTtsStopped(metrics.stoppedAtMs ?: System.currentTimeMillis())
+                        RelayStateStore.recordTtsInterruptionMetrics(recorder.snapshot())
+                    }
+                }
+                activeSpeechRecorder?.let { recorder ->
+                    when (metrics.event) {
+                        TtsPlaybackEvent.STARTED -> recorder.markTtsStarted(metrics.startedAtMs ?: System.currentTimeMillis())
+                        TtsPlaybackEvent.DONE -> recorder.markTtsDone(metrics.completedAtMs ?: System.currentTimeMillis())
+                        TtsPlaybackEvent.STOPPED -> recorder.markInterrupted(
+                            metrics.stoppedAtMs ?: System.currentTimeMillis(),
+                            SpeechEndpointReason.STOP_REQUESTED,
+                        )
+                        TtsPlaybackEvent.ERROR -> recorder.markInterrupted(
+                            metrics.errorAtMs ?: System.currentTimeMillis(),
+                            SpeechEndpointReason.UNKNOWN_ERROR,
+                        )
+                        TtsPlaybackEvent.REQUESTED -> { }
+                    }
+                    RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                }
+            },
         )
+        speechOutputEngine = AndroidTtsOutputEngine(ttsSpeaker)
         audioRouter = BluetoothAudioRouter(this)
         RelayStateStore.setAudioRoute(audioRouter.snapshot())
         signalProviderRegistry = com.openclaw.relay.signal.SignalProviderRegistry(this)
@@ -153,6 +183,11 @@ class RelayService : MediaSessionService() {
             "service onStartCommand action=${intent?.action ?: ACTION_START_RELAY} event=${intent?.getStringExtra(EXTRA_EVENT_NAME) ?: "none"}",
         )
         val serviceAction = intent?.action ?: ACTION_START_RELAY
+        recordForegroundSnapshot(
+            foregroundServiceType = RelayStateStore.state.value.voiceDiagnostics.foregroundService.foregroundServiceTypeMask,
+            isActive = RelayStateStore.state.value.voiceDiagnostics.foregroundService.isForegroundActive,
+            action = serviceAction,
+        )
         if (shouldRefreshAudioRoute(serviceAction)) {
             RelayStateStore.setAudioRoute(audioRouter.snapshot())
         }
@@ -200,7 +235,7 @@ class RelayService : MediaSessionService() {
                 }
 
                 RelayStateStore.markSpeechStarted(System.currentTimeMillis())
-                ttsSpeaker.speak("DevPods Relay is ready.")
+                speakText("DevPods Relay is ready.")
             }
 
             ACTION_TAP_TEST -> runTapTest()
@@ -210,6 +245,7 @@ class RelayService : MediaSessionService() {
             ACTION_CANCEL -> sendApprovalEvent("android_cancel")
             ACTION_RETRY_QUEUE -> retryPendingBridgeQueue()
             ACTION_DISCARD_QUEUE -> discardPendingBridgeQueue()
+            ACTION_AUDIO_ROUTE_PROBE -> runAudioRouteProbe()
             ACTION_DEBUG_EVENT -> handleDebugEvent(intent)
         }
 
@@ -224,14 +260,19 @@ class RelayService : MediaSessionService() {
 
     override fun onDestroy() {
         cancelPendingAutonomyContinuation()
+        recordForegroundSnapshot(
+            foregroundServiceType = 0,
+            isActive = false,
+            action = ACTION_STOP_RELAY,
+        )
         RelayStateStore.markServiceRunning(false)
         RelayStateStore.markListening(false)
         RelayStateStore.markAwaitingBridgeResponse(false)
         RelayStateStore.markSpeaking(false)
         RelayStateStore.clearPendingAction()
         RelayStateStore.clearAutonomy()
-        speechRecognizer.destroy()
-        ttsSpeaker.close()
+        speechInputEngine.destroy()
+        speechOutputEngine.close()
         audioRouter.clear()
         if (::signalProviderRegistry.isInitialized) {
             signalProviderRegistry.stop()
@@ -286,7 +327,7 @@ class RelayService : MediaSessionService() {
         if (readiness == com.openclaw.relay.signal.ListenReadiness.BLOCKED) {
             val message = RelayStateStore.state.value.listenReadinessMessage
             RelayStateStore.setError(message)
-            ttsSpeaker.speak(message)
+            speakText(message)
             return
         }
 
@@ -374,7 +415,9 @@ class RelayService : MediaSessionService() {
                 val current = signalProviderRegistry.getProvider(event.providerId)?.deviceState?.value
                 RelayStateStore.setCurrentDeviceState(current)
                 if (!event.connected && RelayStateStore.state.value.isListening) {
-                    speechRecognizer.stopListening()
+                    serviceScope.launch {
+                        speechInputEngine.stop(SpeechStopReason.CANCELLED)
+                    }
                     RelayStateStore.markListening(false)
                     interruptedWakeSignal = RelayStateStore.state.value.lastWakeSignal
                     RelayStateStore.setError("Headset disconnected. Listening paused.")
@@ -441,6 +484,15 @@ class RelayService : MediaSessionService() {
             }
 
             try {
+                val recorder = SpeechSessionMetricsRecorder(
+                    sessionId = "speech-${System.currentTimeMillis()}",
+                    engineId = speechInputEngine.id,
+                    wakeSignal = RelayStateStore.state.value.lastWakeSignal?.trigger,
+                    startedAtMs = System.currentTimeMillis(),
+                )
+                activeSpeechRecorder = recorder
+                RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+
                 if (RelayStateStore.state.value.isListening) {
                     RelayStateStore.setError("A listening session is already active.")
                     return@launch
@@ -448,30 +500,95 @@ class RelayService : MediaSessionService() {
 
                 RelayStateStore.clearListeningStartupErrors()
 
+                recorder.markRouteRequested(System.currentTimeMillis())
                 if (!prepareListeningRoute()) {
+                    recorder.markError(
+                        nowMs = System.currentTimeMillis(),
+                        errorCode = null,
+                        reason = SpeechEndpointReason.ROUTE_FAILED,
+                    )
+                    RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
                     return@launch
                 }
+                recorder.markRouteReady(System.currentTimeMillis(), RelayStateStore.state.value.audioRoute)
+                RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
 
                 if (!waitForListeningRouteReady()) {
+                    recorder.markRouteReady(System.currentTimeMillis(), RelayStateStore.state.value.audioRoute)
+                    recorder.markError(
+                        nowMs = System.currentTimeMillis(),
+                        errorCode = null,
+                        reason = SpeechEndpointReason.ROUTE_FAILED,
+                    )
+                    RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
                     return@launch
                 }
+                recorder.markRouteReady(System.currentTimeMillis(), RelayStateStore.state.value.audioRoute)
+                RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
 
                 RelayStateStore.markAwaitingBridgeResponse(false)
                 RelayStateStore.setPartialTranscript("")
-                speechRecognizer.resetSession()
                 RelayStateStore.markListening(true)
-                speechRecognizer.startListening(
-                    onPartialTranscript = { partial -> RelayStateStore.setPartialTranscript(partial) },
-                    onFinalTranscript = { transcript ->
-                        RelayStateStore.markListening(false)
-                        RelayStateStore.setTranscript(transcript)
-                        onFinalTranscript(transcript)
-                    },
-                    onError = { failure ->
-                        RelayStateStore.setAudioRoute(audioRouter.snapshot())
-                        RelayStateStore.recordSpeechError(failure.message)
-                        postSttErrorNotification(failure.message)
-                    },
+                speechInputEngine.start(
+                    request = SpeechSessionRequest(
+                        sessionId = recorder.snapshot().sessionId,
+                        wakeSignal = RelayStateStore.state.value.lastWakeSignal?.trigger,
+                    ),
+                    callbacks = SpeechCallbacks(
+                        onPartialTranscript = { partial ->
+                            recorder.markPartial(System.currentTimeMillis(), partial)
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                            RelayStateStore.setPartialTranscript(partial)
+                        },
+                        onFinalTranscript = { transcript ->
+                            recorder.markFinal(System.currentTimeMillis(), transcript)
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                            RelayStateStore.markListening(false)
+                            RelayStateStore.setTranscript(transcript)
+                            onFinalTranscript(transcript)
+                        },
+                        onError = { failure ->
+                            recorder.markError(
+                                nowMs = System.currentTimeMillis(),
+                                errorCode = failure.errorCode,
+                                reason = failure.endpointReason,
+                            )
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                            RelayStateStore.setAudioRoute(audioRouter.snapshot())
+                            RelayStateStore.recordSpeechError(failure.message)
+                            postSttErrorNotification(failure.message)
+                        },
+                        onRecognizerCreated = {
+                            recorder.markRecognizerCreated(System.currentTimeMillis())
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                        onListeningStarted = {
+                            val nowMs = System.currentTimeMillis()
+                            recorder.markListeningStarted(nowMs)
+                            activeTtsInterruptionRecorder?.let { interruptionRecorder ->
+                                interruptionRecorder.markListeningStarted(nowMs)
+                                RelayStateStore.recordTtsInterruptionMetrics(interruptionRecorder.snapshot())
+                                activeTtsInterruptionRecorder = null
+                            }
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                        onReadyForSpeech = {
+                            recorder.markReadyForSpeech(System.currentTimeMillis())
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                        onBeginningOfSpeech = {
+                            recorder.markBeginningOfSpeech(System.currentTimeMillis())
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                        onRmsChanged = { rmsDb ->
+                            recorder.markRmsChanged(System.currentTimeMillis(), rmsDb)
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                        onEndOfSpeech = {
+                            recorder.markEndOfSpeech(System.currentTimeMillis())
+                            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+                        },
+                    ),
                 )
             } finally {
                 listeningSessionMutex.unlock()
@@ -482,6 +599,9 @@ class RelayService : MediaSessionService() {
     private suspend fun waitForListeningRouteReady(): Boolean {
         val useBluetoothRouting = RelayStateStore.state.value.config.useBluetoothRouting
         if (!useBluetoothRouting) {
+            return true
+        }
+        if (RelayStateStore.state.value.audioRoute.isPhoneMicFallback) {
             return true
         }
 
@@ -501,8 +621,18 @@ class RelayService : MediaSessionService() {
             }
 
             if (!routeCheck.shouldRetry) {
-                audioRouter.clear()
-                RelayStateStore.recordSpeechError(routeCheck.errorMessage)
+                val fallbackCheck = AudioRouteFallbackPolicy.resolve(
+                    requestedRoute = routeSnapshot,
+                    allowPhoneMicFallback = RelayStateStore.state.value.config.phoneMicFallback,
+                )
+                if (fallbackCheck.shouldClearRequestedRoute) {
+                    audioRouter.clear()
+                }
+                RelayStateStore.setAudioRoute(fallbackCheck.routeSnapshot)
+                if (fallbackCheck.decision == AudioRouteFallbackDecision.USE_PHONE_MIC_FALLBACK) {
+                    return true
+                }
+                RelayStateStore.recordSpeechError(fallbackCheck.blockingMessage ?: routeCheck.errorMessage)
                 return false
             }
         }
@@ -512,8 +642,22 @@ class RelayService : MediaSessionService() {
 
     private fun interruptImplementationAndListen(wakeSignal: RelayWakeSignal) {
         cancelPendingAutonomyContinuation()
-        speechRecognizer.stopListening()
-        ttsSpeaker.stop()
+        activeSpeechRecorder?.let { recorder ->
+            recorder.markInterrupted(System.currentTimeMillis(), SpeechEndpointReason.CANCELLED)
+            RelayStateStore.recordSpeechSessionMetrics(recorder.snapshot())
+        }
+        serviceScope.launch {
+            speechInputEngine.stop(SpeechStopReason.CANCELLED)
+        }
+        val interruptionRequestedAtMs = System.currentTimeMillis()
+        val interruptionRecorder = TtsInterruptionMetricsRecorder(
+            interruptionId = "tts-interrupt-$interruptionRequestedAtMs",
+            reason = TtsInterruptionReason.BARGE_IN,
+            requestedAtMs = interruptionRequestedAtMs,
+        )
+        activeTtsInterruptionRecorder = interruptionRecorder
+        RelayStateStore.recordTtsInterruptionMetrics(interruptionRecorder.snapshot())
+        stopSpeechOutput(TtsStopReason.BARGE_IN)
 
         if (!prepareListeningRoute()) {
             return
@@ -539,8 +683,29 @@ class RelayService : MediaSessionService() {
 
         RelayStateStore.clearAutonomy()
         RelayStateStore.markSpeechStarted(System.currentTimeMillis())
-        ttsSpeaker.speak("Implementation paused. Tell me what to change.") {
+        speakText("Implementation paused. Tell me what to change.") {
             startAutonomyInterruptListeningSession(wakeSignal)
+        }
+    }
+
+    private fun speakText(text: String, onComplete: (() -> Unit)? = null) {
+        serviceScope.launch {
+            speechOutputEngine.speak(
+                request = TtsRequest(
+                    utteranceId = "relay-tts-${System.currentTimeMillis()}",
+                    text = text,
+                ),
+                callbacks = TtsCallbacks(
+                    onComplete = { onComplete?.invoke() },
+                    onError = RelayStateStore::recordTtsError,
+                ),
+            )
+        }
+    }
+
+    private fun stopSpeechOutput(reason: TtsStopReason) {
+        serviceScope.launch {
+            speechOutputEngine.stop(reason)
         }
     }
 
@@ -552,10 +717,17 @@ class RelayService : MediaSessionService() {
         }
 
         val routeSnapshot = audioRouter.routeCommunicationAudio()
-        RelayStateStore.setAudioRoute(routeSnapshot)
-        if (!routeSnapshot.isActive) {
+        val routeCheck = AudioRouteFallbackPolicy.resolve(
+            requestedRoute = routeSnapshot,
+            allowPhoneMicFallback = RelayStateStore.state.value.config.phoneMicFallback,
+            allowRouteSettle = true,
+        )
+        if (routeCheck.shouldClearRequestedRoute) {
             audioRouter.clear()
-            RelayStateStore.recordSpeechError("Bluetooth routing failed. Check the connected audio device.")
+        }
+        RelayStateStore.setAudioRoute(routeCheck.routeSnapshot)
+        if (routeCheck.decision == AudioRouteFallbackDecision.BLOCK_LISTENING) {
+            RelayStateStore.recordSpeechError(routeCheck.blockingMessage ?: "Bluetooth routing failed. Check the connected audio device.")
             return false
         }
 
@@ -577,7 +749,7 @@ class RelayService : MediaSessionService() {
     }
 
     private fun maybePromoteForegroundForListening() {
-        if (!speechRecognizer.isRecognitionAvailable()) {
+        if (!speechInputEngine.capabilities().isAvailable) {
             return
         }
 
@@ -591,11 +763,36 @@ class RelayService : MediaSessionService() {
     }
 
     private fun startRelayForeground(foregroundServiceType: Int) {
+        recordForegroundSnapshot(
+            foregroundServiceType = foregroundServiceType,
+            isActive = true,
+            action = RelayStateStore.state.value.voiceDiagnostics.foregroundService.lastStartAction,
+        )
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
             buildNotification(),
             foregroundServiceType,
+        )
+    }
+
+    private fun recordForegroundSnapshot(
+        foregroundServiceType: Int,
+        isActive: Boolean,
+        action: String?,
+    ) {
+        RelayStateStore.recordForegroundServiceSnapshot(
+            RelayForegroundServiceSnapshot(
+                isForegroundActive = isActive,
+                foregroundServiceTypeMask = foregroundServiceType,
+                mediaSessionReady = ::signalProviderRegistry.isInitialized &&
+                    signalProviderRegistry.getMediaSessionProvider().mediaSession() != null,
+                notificationControls = ForegroundControlSnapshot.requiredRelayControls(),
+                lastStartAction = action,
+                updatedAtMs = System.currentTimeMillis(),
+                restoredAfterRestart = RelayStateStore.state.value.voiceDiagnostics.foregroundService.restoredAfterRestart,
+                recoveryReason = RelayStateStore.state.value.voiceDiagnostics.foregroundService.recoveryReason,
+            )
         )
     }
 
@@ -611,6 +808,33 @@ class RelayService : MediaSessionService() {
                 timestamp = System.currentTimeMillis(),
             ),
         )
+    }
+
+    private fun runAudioRouteProbe() {
+        serviceScope.launch {
+            if (RelayStateStore.state.value.isListening) {
+                RelayStateStore.setError("Stop the current listening session before running the microphone route probe.")
+                return@launch
+            }
+
+            maybePromoteForegroundForListening()
+            if (RelayStateStore.state.value.config.useBluetoothRouting) {
+                prepareListeningRoute()
+            }
+
+            val probe = AudioRecordRouteProbe(
+                context = this@RelayService,
+                routeSnapshotProvider = { audioRouter.snapshot() },
+            )
+            val metrics = probe.runProbe()
+            RelayStateStore.recordAudioProbeMetrics(metrics)
+            if (metrics.initStatus == AudioProbeInitStatus.STARTED) {
+                RelayStateStore.clearError()
+            } else {
+                RelayStateStore.setError(metrics.errorMessage ?: "Microphone route probe failed.")
+            }
+            RelayStateStore.setAudioRoute(audioRouter.snapshot())
+        }
     }
 
     private fun shouldRefreshAudioRoute(action: String): Boolean {
@@ -715,7 +939,7 @@ class RelayService : MediaSessionService() {
                     }
                     if (result.value.speak.isNotBlank()) {
                         RelayStateStore.markSpeechStarted(System.currentTimeMillis())
-                        ttsSpeaker.speak(result.value.speak) {
+                        speakText(result.value.speak) {
                             onSpeechComplete?.invoke()
                             if (onSpeechComplete == null) {
                                 scheduleAutonomyContinuation(result.value)

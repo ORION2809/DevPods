@@ -44,6 +44,7 @@ class RelayViewModel(
         RelayStateStore.updateConfig { savedConfig }
         RelayStateStore.setPhoneMicFallback(savedConfig.phoneMicFallback)
         RelayStateStore.setAssistantFallback(savedConfig.assistantFallback)
+        RelayStateStore.recordOfflineSpeechReadiness(OfflineSpeechReadiness.evaluate(savedConfig))
         RelayStateStore.clearError()
     }
 
@@ -135,6 +136,31 @@ class RelayViewModel(
     fun updateAssistantFallback(context: Context, enabled: Boolean) {
         RelayStateStore.updateConfig { it.copy(assistantFallback = enabled) }
         RelayStateStore.setAssistantFallback(enabled)
+        RelayConfigStorage.save(context, state.value.config)
+        RelayStateStore.clearError()
+    }
+
+    fun updateSpeechInputMode(context: Context, mode: SpeechInputMode) {
+        RelayStateStore.updateConfig { it.copy(speechInputMode = mode) }
+        RelayStateStore.recordOfflineSpeechReadiness(OfflineSpeechReadiness.evaluate(state.value.config))
+        RelayConfigStorage.save(context, state.value.config)
+        RelayStateStore.clearError()
+    }
+
+    fun updateOfflineSpeechModel(
+        context: Context,
+        modelPath: String,
+        modelVersion: String,
+        modelSha256: String = "",
+    ) {
+        RelayStateStore.updateConfig {
+            it.copy(
+                offlineSpeechModelPath = modelPath.trim(),
+                offlineSpeechModelVersion = modelVersion.trim(),
+                offlineSpeechModelSha256 = modelSha256.trim(),
+            )
+        }
+        RelayStateStore.recordOfflineSpeechReadiness(OfflineSpeechReadiness.evaluate(state.value.config))
         RelayConfigStorage.save(context, state.value.config)
         RelayStateStore.clearError()
     }
@@ -305,6 +331,18 @@ class RelayViewModel(
 
     fun testSpeaker(context: Context) {
         ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_TEST_SPEAKER))
+    }
+
+    fun startVoiceProofRun() {
+        RelayStateStore.startVoiceProofRun()
+    }
+
+    fun resetVoiceProofRun() {
+        RelayStateStore.resetVoiceProofRun()
+    }
+
+    fun runAudioRouteProbe(context: Context) {
+        ContextCompat.startForegroundService(context, RelayService.intent(context, RelayService.ACTION_AUDIO_ROUTE_PROBE))
     }
 
     fun tapTest(context: Context) {
@@ -570,6 +608,7 @@ class RelayViewModel(
     fun testStt(context: Context) {
         viewModelScope.launch {
             Log.i(TAG, "setup stt test started")
+            RelayStateStore.startVoiceProofRun(targetSessionCount = 1)
             val previousTranscript = state.value.lastTranscript
             val previousWake = state.value.lastWakeSignal
 

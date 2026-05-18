@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.openclaw.relay.RelayUiState
+import com.openclaw.relay.VoiceProofRun
+import com.openclaw.relay.VoiceProofRunStatus
 import com.openclaw.relay.ui.components.ButtonStyle
 import com.openclaw.relay.ui.components.ChipStyle
 import com.openclaw.relay.ui.components.DevPodsButton
@@ -52,6 +54,7 @@ fun HelpScreen(
     microphoneAllowed: Boolean = false,
     notificationsAllowed: Boolean = false,
     speechEngineAvailable: Boolean = false,
+    voiceProofRun: VoiceProofRun = VoiceProofRun(),
     showPermissionModal: Boolean = false,
     isDevModeEnabled: Boolean = false,
     diagnosticsIncludePhoneModel: Boolean = true,
@@ -66,6 +69,9 @@ fun HelpScreen(
     onDiagnosticsCapabilityMatrixChanged: (Boolean) -> Unit = {},
     onDiagnosticsErrorCategoriesChanged: (Boolean) -> Unit = {},
     onDiagnosticsRawRouteChanged: (Boolean) -> Unit = {},
+    onStartVoiceProofRun: () -> Unit = {},
+    onResetVoiceProofRun: () -> Unit = {},
+    onRunAudioRouteProbe: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -146,6 +152,13 @@ fun HelpScreen(
                 color = DevPodsColor.Muted,
             )
         }
+
+        VoiceProofRunCard(
+            voiceProofRun = voiceProofRun,
+            onStartVoiceProofRun = onStartVoiceProofRun,
+            onResetVoiceProofRun = onResetVoiceProofRun,
+            onRunAudioRouteProbe = onRunAudioRouteProbe,
+        )
 
         // D. Permission modal (shown as a card)
         if (showPermissionModal) {
@@ -338,6 +351,105 @@ fun HelpScreen(
                 style = if (isDevModeEnabled) ButtonStyle.Ghost else ButtonStyle.Primary,
             )
         }
+    }
+}
+
+@Composable
+private fun VoiceProofRunCard(
+    voiceProofRun: VoiceProofRun,
+    onStartVoiceProofRun: () -> Unit,
+    onResetVoiceProofRun: () -> Unit,
+    onRunAudioRouteProbe: () -> Unit,
+) {
+    val summary = voiceProofRun.summary
+    val chipStyle = when (voiceProofRun.status) {
+        VoiceProofRunStatus.PASSED -> ChipStyle.Success
+        VoiceProofRunStatus.FAILED -> ChipStyle.Error
+        VoiceProofRunStatus.RUNNING -> ChipStyle.Info
+        VoiceProofRunStatus.NOT_STARTED -> ChipStyle.Muted
+    }
+    DevPodsCard(accentColor = DevPodsColor.Mint) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Voice proof matrix",
+                style = MaterialTheme.typography.titleMedium,
+                color = DevPodsColor.Ink,
+            )
+            DevPodsChip(
+                text = voiceProofRun.status.name.lowercase().replace("_", " "),
+                style = chipStyle,
+                showDot = false,
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Run this before support export: tap your earbuds and speak across 20 sessions so route, STT, VAD, TTS, and mic-proof metrics are measured.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = DevPodsColor.Muted,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        ProofMetricRow("Sessions", "${summary.completedSessionCount}/${summary.targetSessionCount}")
+        ProofMetricRow("Successful", "${summary.successfulSessionCount} (${summary.reliabilityPercent}%)")
+        ProofMetricRow("Route proof", "${summary.routeSuccessCount} ok / ${summary.routeFailureCount} failed")
+        ProofMetricRow("Wrong mic", summary.wrongMicSuspectedCount.toString())
+        ProofMetricRow("Barge-in target", "${summary.interruptionTargetMetCount} under 250ms")
+        if (summary.failureReasons.isNotEmpty()) {
+            ProofMetricRow("Failure class", summary.failureReasons.joinToString(", "))
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            DevPodsButton(
+                text = if (voiceProofRun.status == VoiceProofRunStatus.RUNNING) "Proof running" else "Start proof",
+                onClick = onStartVoiceProofRun,
+                modifier = Modifier.weight(1f),
+                style = ButtonStyle.Primary,
+            )
+            DevPodsButton(
+                text = "Mic probe",
+                onClick = onRunAudioRouteProbe,
+                modifier = Modifier.weight(1f),
+                style = ButtonStyle.Secondary,
+            )
+        }
+        if (voiceProofRun.status != VoiceProofRunStatus.NOT_STARTED) {
+            Spacer(modifier = Modifier.height(8.dp))
+            DevPodsButton(
+                text = "Reset proof run",
+                onClick = onResetVoiceProofRun,
+                modifier = Modifier.fillMaxWidth(),
+                style = ButtonStyle.Ghost,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProofMetricRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = DevPodsColor.Muted,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = DevPodsColor.Ink,
+        )
     }
 }
 

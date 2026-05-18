@@ -10,6 +10,10 @@ object RelayConfigStorage {
     private const val KEY_USE_BLUETOOTH_ROUTING = "use_bluetooth_routing"
     private const val KEY_PHONE_MIC_FALLBACK = "phone_mic_fallback"
     private const val KEY_ASSISTANT_FALLBACK = "assistant_fallback"
+    private const val KEY_SPEECH_INPUT_MODE = "speech_input_mode"
+    private const val KEY_OFFLINE_SPEECH_MODEL_PATH = "offline_speech_model_path"
+    private const val KEY_OFFLINE_SPEECH_MODEL_VERSION = "offline_speech_model_version"
+    private const val KEY_OFFLINE_SPEECH_MODEL_SHA256 = "offline_speech_model_sha256"
 
     fun load(context: Context): RelayConfig? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,6 +29,12 @@ object RelayConfigStorage {
             useBluetoothRouting = prefs.getBoolean(KEY_USE_BLUETOOTH_ROUTING, true),
             phoneMicFallback = prefs.getBoolean(KEY_PHONE_MIC_FALLBACK, false),
             assistantFallback = prefs.getBoolean(KEY_ASSISTANT_FALLBACK, true),
+            speechInputMode = runCatching {
+                SpeechInputMode.valueOf(prefs.getString(KEY_SPEECH_INPUT_MODE, SpeechInputMode.PLATFORM.name) ?: SpeechInputMode.PLATFORM.name)
+            }.getOrDefault(SpeechInputMode.PLATFORM),
+            offlineSpeechModelPath = prefs.getString(KEY_OFFLINE_SPEECH_MODEL_PATH, "") ?: "",
+            offlineSpeechModelVersion = prefs.getString(KEY_OFFLINE_SPEECH_MODEL_VERSION, "") ?: "",
+            offlineSpeechModelSha256 = prefs.getString(KEY_OFFLINE_SPEECH_MODEL_SHA256, "") ?: "",
         )
     }
 
@@ -37,6 +47,10 @@ object RelayConfigStorage {
             .putBoolean(KEY_USE_BLUETOOTH_ROUTING, config.useBluetoothRouting)
             .putBoolean(KEY_PHONE_MIC_FALLBACK, config.phoneMicFallback)
             .putBoolean(KEY_ASSISTANT_FALLBACK, config.assistantFallback)
+            .putString(KEY_SPEECH_INPUT_MODE, config.speechInputMode.name)
+            .putString(KEY_OFFLINE_SPEECH_MODEL_PATH, config.offlineSpeechModelPath)
+            .putString(KEY_OFFLINE_SPEECH_MODEL_VERSION, config.offlineSpeechModelVersion)
+            .putString(KEY_OFFLINE_SPEECH_MODEL_SHA256, config.offlineSpeechModelSha256)
             .apply()
     }
 

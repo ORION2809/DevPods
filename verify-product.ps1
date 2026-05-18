@@ -47,7 +47,7 @@ try {
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $testOutput = npm test 2>&1
+        $testOutput = npm test -- --maxWorkers=1 2>&1
         $testExitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference

@@ -1,0 +1,138 @@
+You need a task-runner loop, not manual prompts.
+
+OpenClaw should not be the plan owner. Your repo should contain the plan, state, and queue. OpenClaw executes the next task, reports, then the runner starts the next one.
+
+Target structure
+ai-workplan/
+  GLOBAL_RULES.md
+  MASTER_PLAN.md
+  TASKS/
+    TASK-001.md
+    TASK-002.md
+    TASK-003.md
+  STATE/
+    completed.md
+    blocked.md
+    current-task.json
+    run-log.md
+Automation logic
+1. Pick next uncompleted task from ai-workplan/TASKS
+2. Send it to OpenClaw
+3. Force TDD execution
+4. Run verification
+5. If passed, mark completed
+6. If failed after 3 attempts, mark blocked
+7. Move to next task
+8. Stop only when all tasks are completed/blocked
+Prompt template for each task
+
+Use the same wrapper every time:
+
+You are executing one task from ai-workplan.
+
+Read:
+- ai-workplan/GLOBAL_RULES.md
+- {TASK_FILE}
+
+Rules:
+1. Execute only this task.
+2. Use TDD: RED → GREEN → REFACTOR → VERIFY.
+3. Do not work on future tasks.
+4. Do not modify unrelated files.
+5. Run the verification command from the task.
+6. If verification passes, write ai-workplan/STATE/{TASK_ID}-REPORT.md with status PASSED.
+7. If blocked after 3 attempts, write ai-workplan/STATE/{TASK_ID}-BLOCKED.md with exact reason.
+8. Stop after this task.
+Simple PowerShell automation
+
+Create:
+
+run-openclaw-tasks.ps1
+$tasks = Get-ChildItem ".\ai-workplan\TASKS\*.md" | Sort-Object Name
+
+foreach ($task in $tasks) {
+    $taskId = [System.IO.Path]::GetFileNameWithoutExtension($task.Name)
+    $report = ".\ai-workplan\STATE\$taskId-REPORT.md"
+    $blocked = ".\ai-workplan\STATE\$taskId-BLOCKED.md"
+
+    if ((Test-Path $report) -or (Test-Path $blocked)) {
+        Write-Host "Skipping $taskId - already handled"
+        continue
+    }
+
+    Write-Host "Running $taskId"
+
+    $prompt = @"
+Read ai-workplan/GLOBAL_RULES.md and $($task.FullName).
+
+Execute only this task.
+
+Use TDD:
+1. Write failing tests first.
+2. Implement minimum code.
+3. Run the verification command from the task.
+4. Fix failures caused by this task only.
+5. Retry max 3 times.
+6. If passed, write ai-workplan/STATE/$taskId-REPORT.md.
+7. If blocked, write ai-workplan/STATE/$taskId-BLOCKED.md.
+8. Stop after this task. Do not continue to the next task.
+"@
+
+    openclaw run --message $prompt
+
+    if (Test-Path $report) {
+        git add .
+        git commit -m "Complete $taskId"
+    }
+    elseif (Test-Path $blocked) {
+        git add .
+        git commit -m "Block $taskId"
+    }
+    else {
+        Write-Host "$taskId ended without report or blocked file. Stopping."
+        break
+    }
+}
+
+If openclaw run --message is not the exact command in your version, run:
+
+openclaw --help
+
+and look for the non-interactive command name. It may be called run, ask, agent, or similar depending on version.
+
+Better: make the model self-report machine-readable status
+
+At the end of every task, force it to create:
+
+ai-workplan/STATE/TASK-001-result.json
+{
+  "task_id": "TASK-001",
+  "status": "PASSED",
+  "verification_command": "./gradlew testDebugUnitTest",
+  "verification_result": "PASSED",
+  "files_changed": [],
+  "attempts": 1,
+  "next_task": "TASK-002"
+}
+
+Then your runner can reliably continue.
+
+The safest automation model
+Fully automatic:
+- data models
+- unit tests
+- docs
+- small UI components
+
+Semi-automatic:
+- Android service lifecycle
+- Bluetooth routing
+- SpeechRecognizer changes
+- TTS interruption
+
+Manual gate required:
+- permissions
+- destructive shell commands
+- dependency installs
+- Gradle/build system changes
+- Sherpa/native/JNI integration
