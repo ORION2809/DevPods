@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -21,19 +20,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
+import com.openclaw.relay.DiscoveredBridge
 import com.openclaw.relay.RelayConfig
 import com.openclaw.relay.SetupPhase
 import com.openclaw.relay.SetupTestState
+import com.openclaw.relay.calibration.CalibrationSessionState
+import com.openclaw.relay.calibration.CalibrationSessionStatus
+import com.openclaw.relay.calibration.CalibrationConfidence
+import com.openclaw.relay.calibration.EarbudCalibrationProfile
+import com.openclaw.relay.calibration.GestureAction
+import com.openclaw.relay.calibration.GestureActionMap
+import com.openclaw.relay.signal.GestureType
 import com.openclaw.relay.isPaired
 import com.openclaw.relay.ui.components.ButtonStyle
+import com.openclaw.relay.ui.components.DevPodsAppIconTile
 import com.openclaw.relay.ui.components.DevPodsButton
 import com.openclaw.relay.ui.components.DevPodsCard
 import com.openclaw.relay.ui.components.DevPodsChip
 import com.openclaw.relay.ui.components.DevPodsHeroCard
+import com.openclaw.relay.ui.components.DevPodsMarkTealDark
 import com.openclaw.relay.ui.components.DevPodsSmallButton
-import com.openclaw.relay.ui.components.QueueMeter
+import com.openclaw.relay.ui.components.SetupProgressBar
 import com.openclaw.relay.ui.components.Waveform
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 @Suppress("UNUSED_PARAMETER")
@@ -44,39 +57,54 @@ fun SetupWizardScreen(
     config: RelayConfig = RelayConfig(),
     errorMessage: String?,
     userFacingErrorMessage: String?,
+    discoveredBridges: List<DiscoveredBridge> = emptyList(),
+    isDiscovering: Boolean = false,
     onStartSetup: () -> Unit,
     onSkipSetup: () -> Unit,
     onScanQr: () -> Unit = {},
     onImportLink: () -> Unit = {},
+    onSelectDiscoveredBridge: (DiscoveredBridge) -> Unit = {},
     onProbeDevice: () -> Unit,
     onTestWake: () -> Unit,
     onTestStt: () -> Unit,
     onCompleteSetup: () -> Unit,
     onRetry: () -> Unit,
+    calibrationSession: CalibrationSessionState? = null,
+    calibrationProfile: com.openclaw.relay.calibration.EarbudCalibrationProfile? = null,
+    onSkipCalibration: () -> Unit = {},
+    onFinishCalibration: () -> Unit = {},
+    onGestureActionSelected: (com.openclaw.relay.signal.GestureType, com.openclaw.relay.calibration.GestureAction) -> Unit = { _, _ -> },
+    onCompleteGestureMapping: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .background(DevPodsColor.Background)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
+            .padding(horizontal = DevPodsSpacing.screenX, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Progress
+        // Progress — normalized to 4 steps with solid teal track
+        // Step 1: Pairing / Quick Start
+        // Step 2: Device Probe
+        // Step 3: Calibration + Gesture Mapping + Gesture Test
+        // Step 4: STT Test + Complete
         val stepNumber = when (phase) {
             SetupPhase.NOT_STARTED -> 0
             SetupPhase.PAIRING -> 1
+            SetupPhase.QUICK_START -> 1
             SetupPhase.DEVICE_PROBE -> 2
+            SetupPhase.CALIBRATION -> 3
+            SetupPhase.GESTURE_MAPPING -> 3
             SetupPhase.GESTURE_TEST -> 3
             SetupPhase.STT_TEST -> 4
-            SetupPhase.COMPLETE -> 4
+            SetupPhase.COMPLETE_PROVEN -> 4
+            SetupPhase.COMPLETE_DEGRADED -> 4
         }
         val progress = stepNumber / 4f
-        QueueMeter(progress = progress, modifier = Modifier.fillMaxWidth())
+        SetupProgressBar(progress = progress, modifier = Modifier.fillMaxWidth())
         Text(
-            text = if (phase == SetupPhase.COMPLETE) "Step 4 of 4" else "Step $stepNumber of 4",
+            text = "Step $stepNumber of 4",
             style = MaterialTheme.typography.labelMedium,
             color = DevPodsColor.Muted,
         )
@@ -89,6 +117,7 @@ fun SetupWizardScreen(
                         text = "Something went wrong",
                         style = MaterialTheme.typography.titleMedium,
                         color = DevPodsColor.Red,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Text(
                         text = userFacingErrorMessage,
@@ -116,11 +145,39 @@ fun SetupWizardScreen(
         }
 
         when (phase) {
+            SetupPhase.QUICK_START -> {
+                Text(
+                    text = "Quick Start",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Your DevPods bridge is connected. You can use read-only commands and push-to-talk right away. Full gesture control requires calibration.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+                DevPodsButton(
+                    text = "Continue",
+                    onClick = onProbeDevice,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ButtonStyle.Primary,
+                )
+            }
             SetupPhase.NOT_STARTED -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DevPodsAppIconTile(
+                        modifier = Modifier.size(84.dp),
+                    )
+                }
                 Text(
                     text = "Device Setup",
                     style = MaterialTheme.typography.headlineMedium,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "Let's verify your earbuds work with DevPods. This takes about one minute.",
@@ -140,6 +197,11 @@ fun SetupWizardScreen(
                 )
                 SetupStepCard(
                     stepNumber = 3,
+                    title = "Calibrate gestures",
+                    description = "Learn how your specific earbuds send signals so DevPods can reliably detect taps, holds, and presses.",
+                )
+                SetupStepCard(
+                    stepNumber = 4,
                     title = "Test wake and listen",
                     description = "Tap your earbuds to wake the app, then speak a short phrase.",
                 )
@@ -168,6 +230,7 @@ fun SetupWizardScreen(
                     text = "Step 1 of 4: Bridge pairing",
                     style = MaterialTheme.typography.headlineSmall,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "Make sure the desktop bridge is running on your computer and both devices are on the same Wi-Fi network. If you already imported a pairing link, tap Continue.",
@@ -210,11 +273,50 @@ fun SetupWizardScreen(
                     text = if (config.isPaired()) {
                         "Success: your bridge is connected. Tap Continue to proceed."
                     } else {
-                        "Import a pairing link to connect. The status above will update when the bridge responds."
+                        "Import a pairing link to connect, or discover nearby bridges on your network."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (config.isPaired()) DevPodsColor.Teal else DevPodsColor.Muted,
                 )
+
+                // Discovered bridges from mDNS
+                if (!config.isPaired() && discoveredBridges.isNotEmpty()) {
+                    Text(
+                        text = "Found on this network",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = DevPodsColor.Ink,
+                    )
+                    for (bridge in discoveredBridges) {
+                        DevPodsCard(accentColor = DevPodsColor.Teal) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = bridge.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = DevPodsColor.Ink,
+                                )
+                                Text(
+                                    text = bridge.pairingBaseUrl ?: "${bridge.host}:${bridge.port}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = DevPodsColor.Muted,
+                                )
+                                DevPodsSmallButton(
+                                    text = "Connect",
+                                    onClick = { onSelectDiscoveredBridge(bridge) },
+                                    style = ButtonStyle.Primary,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (!config.isPaired() && isDiscovering && discoveredBridges.isEmpty()) {
+                    Text(
+                        text = "Searching for DevPods bridges on your network...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DevPodsColor.Muted,
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -245,6 +347,7 @@ fun SetupWizardScreen(
                     text = "Step 2 of 4: Probing earbud capabilities",
                     style = MaterialTheme.typography.headlineSmall,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "Hold on while we detect connected earbuds and their supported gestures. Keep your earbuds in your ears and connected via Bluetooth.",
@@ -267,11 +370,130 @@ fun SetupWizardScreen(
                 }
             }
 
+            SetupPhase.CALIBRATION -> {
+                Text(
+                    text = "Step 3 of 4: Calibrate your earbuds",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Tap or press your earbuds when prompted. DevPods learns the exact signal pattern so it can reliably detect your gestures.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+
+                val session = calibrationSession
+                val gestureLabel = when (session?.requestedGesture) {
+                    com.openclaw.relay.signal.GestureType.SINGLE_PRESS -> "Single-tap your earbud"
+                    com.openclaw.relay.signal.GestureType.DOUBLE_PRESS -> "Double-tap your earbud"
+                    com.openclaw.relay.signal.GestureType.TRIPLE_PRESS -> "Triple-tap your earbud"
+                    com.openclaw.relay.signal.GestureType.LONG_PRESS -> "Long-press your earbud"
+                    else -> "Perform the gesture"
+                }
+
+                val statusLabel = when (session?.status) {
+                    CalibrationSessionStatus.WAITING -> "Listening…"
+                    CalibrationSessionStatus.DETECTED -> "Detected!"
+                    CalibrationSessionStatus.RETRY -> "Try again"
+                    CalibrationSessionStatus.TIMEOUT -> "No signal detected. Check your earbuds are connected."
+                    CalibrationSessionStatus.UNSUPPORTED -> "Gesture not detected"
+                    CalibrationSessionStatus.AMBIGUOUS -> "Ambiguous signal"
+                    CalibrationSessionStatus.COMPLETE -> "Calibration complete"
+                    null -> "Getting ready…"
+                }
+
+                val statusColor = when (session?.status) {
+                    CalibrationSessionStatus.WAITING -> DevPodsColor.Mint
+                    CalibrationSessionStatus.DETECTED -> DevPodsColor.Teal
+                    CalibrationSessionStatus.COMPLETE -> DevPodsColor.Teal
+                    CalibrationSessionStatus.RETRY -> DevPodsColor.Amber
+                    CalibrationSessionStatus.TIMEOUT -> DevPodsColor.Red
+                    CalibrationSessionStatus.UNSUPPORTED -> DevPodsColor.Red
+                    CalibrationSessionStatus.AMBIGUOUS -> DevPodsColor.Amber
+                    null -> DevPodsColor.Muted
+                }
+
+                DevPodsCard(accentColor = statusColor) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = gestureLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = DevPodsColor.Ink,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        Text(
+                            text = "Attempt ${session?.attemptNumber ?: 1} of 3",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = DevPodsColor.Muted,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(statusColor, CircleShape),
+                            )
+                            Text(
+                                text = statusLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = DevPodsColor.Ink,
+                            )
+                        }
+                    }
+                }
+
+                if (session?.status == CalibrationSessionStatus.COMPLETE) {
+                    DevPodsButton(
+                        text = "Continue",
+                        onClick = onFinishCalibration,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = ButtonStyle.Primary,
+                    )
+                }
+            }
+
+            SetupPhase.GESTURE_MAPPING -> {
+                Text(
+                    text = "Step 3 of 4: Map gestures to actions",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                val profile = calibrationProfile
+                val confidenceLabel = if (profile?.routeProof?.isSuccess == true) "proven" else "detected"
+                Text(
+                    text = "Assign what each $confidenceLabel gesture does. You can change these later in Settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+
+                GestureMappingCard(
+                    profile = calibrationProfile,
+                    onActionSelected = onGestureActionSelected,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                DevPodsButton(
+                    text = "Continue",
+                    onClick = onCompleteGestureMapping,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ButtonStyle.Primary,
+                )
+            }
+
             SetupPhase.GESTURE_TEST -> {
                 Text(
                     text = "Step 3 of 4: Test wake gesture",
                     style = MaterialTheme.typography.headlineSmall,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "After starting the test, tap your earbuds (single or double tap). The app records whether the signal arrived.",
@@ -321,12 +543,6 @@ fun SetupWizardScreen(
                         style = ButtonStyle.Primary,
                     )
                 }
-                DevPodsButton(
-                    text = "Use assistant fallback",
-                    onClick = { /* assistant fallback path */ },
-                    modifier = Modifier.fillMaxWidth(),
-                    style = ButtonStyle.Ghost,
-                )
             }
 
             SetupPhase.STT_TEST -> {
@@ -334,6 +550,7 @@ fun SetupWizardScreen(
                     text = "Step 4 of 4: Test speech capture",
                     style = MaterialTheme.typography.headlineSmall,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "After starting the test, tap your earbuds to wake the app, then say 'hello DevPods'. The test passes only if the physical tap starts the listening session.",
@@ -392,11 +609,20 @@ fun SetupWizardScreen(
                 }
             }
 
-            SetupPhase.COMPLETE -> {
+            SetupPhase.COMPLETE_PROVEN -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DevPodsMarkTealDark(
+                        modifier = Modifier.size(88.dp),
+                    )
+                }
                 Text(
                     text = "Setup complete",
                     style = MaterialTheme.typography.headlineMedium,
                     color = DevPodsColor.Teal,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Text(
                     text = "Your device profile has been saved. You can rerun setup anytime from the device card.",
@@ -408,6 +634,40 @@ fun SetupWizardScreen(
                     onClick = onCompleteSetup,
                     modifier = Modifier.fillMaxWidth(),
                     style = ButtonStyle.Primary,
+                )
+            }
+
+            SetupPhase.COMPLETE_DEGRADED -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DevPodsMarkTealDark(
+                        modifier = Modifier.size(88.dp),
+                    )
+                }
+                Text(
+                    text = "Setup incomplete",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = DevPodsColor.Amber,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Some proof steps failed. A degraded profile was saved. You can still use DevPods, but reliability depends on fallback paths. Rerun setup after fixing the issue.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+                DevPodsButton(
+                    text = "Continue anyway",
+                    onClick = onCompleteSetup,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ButtonStyle.Primary,
+                )
+                DevPodsButton(
+                    text = "Retry failed steps",
+                    onClick = onRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = ButtonStyle.Ghost,
                 )
             }
         }
@@ -422,7 +682,7 @@ private fun SetupStepCard(
     modifier: Modifier = Modifier,
 ) {
     DevPodsCard(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().semantics { contentDescription = "Step $stepNumber, $title" },
         accentColor = DevPodsColor.Teal,
     ) {
         Row(
@@ -453,6 +713,77 @@ private fun SetupStepCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = DevPodsColor.Muted,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GestureMappingCard(
+    profile: EarbudCalibrationProfile?,
+    onActionSelected: (GestureType, GestureAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val provenGestures = profile?.calibratedGestures?.filter {
+        it.confidence == CalibrationConfidence.PROVEN
+    } ?: emptyList()
+
+    if (provenGestures.isEmpty()) {
+        Text(
+            text = "No proven gestures to map. Go back and retry calibration.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = DevPodsColor.Muted,
+        )
+        return
+    }
+
+    val actions = listOf(
+        GestureAction.WAKE_AND_LISTEN to "Wake & Listen",
+        GestureAction.INTERRUPT to "Interrupt",
+        GestureAction.APPROVE to "Approve",
+        GestureAction.REJECT to "Reject",
+        GestureAction.NONE to "No Action",
+    )
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        provenGestures.forEach { calibratedGesture ->
+            val gestureType = calibratedGesture.requestedGesture
+            val gestureLabel = when (gestureType) {
+                GestureType.SINGLE_PRESS -> "Single Tap"
+                GestureType.DOUBLE_PRESS -> "Double Tap"
+                GestureType.TRIPLE_PRESS -> "Triple Tap"
+                GestureType.LONG_PRESS -> "Long Press"
+                else -> gestureType.name
+            }
+            val currentAction = profile?.gestureActionMap?.actionFor(gestureType)
+            DevPodsCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = gestureLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = DevPodsColor.Ink,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        actions.forEach { (action, label) ->
+                            val isSelected = currentAction == action
+                            DevPodsSmallButton(
+                                text = label,
+                                onClick = { onActionSelected(gestureType, action) },
+                                modifier = Modifier.weight(1f),
+                                style = if (isSelected) ButtonStyle.Primary else ButtonStyle.Secondary,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

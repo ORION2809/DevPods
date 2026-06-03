@@ -13,3 +13,9 @@ val DevPodsShapes = Shapes(
 )
 
 val PillShape = RoundedCornerShape(percent = 50)
+
+// Component-specific radii for reference-exact parity
+val CardRadius = 24.dp
+val NavRadius = 28.dp
+val SheetRadius = 30.dp
+val ShellPreviewRadius = 34.dp

@@ -23,6 +23,8 @@ class VoiceProofRunTest {
         assertEquals(50, run.summary.reliabilityPercent)
         assertEquals(VoiceProofRunStatus.RUNNING, run.status)
         assertNull(run.finishedAtMs)
+        assertEquals("synthetic_pcm", run.sessions.first().routeSelectedDeviceType)
+        assertEquals(720L, run.sessions.first().durationMs)
     }
 
     @Test
@@ -100,6 +102,101 @@ class VoiceProofRunTest {
         assertFalse(run.lastAudioProbe?.rawAudioPersisted ?: true)
     }
 
+    @Test
+    fun `proof summary hasBlockingFailures when any failure reason exists`() {
+        val probe = AudioProbeMetrics(
+            initStatus = AudioProbeInitStatus.STARTED,
+            startedAtMs = 1_000L,
+            finishedAtMs = 1_500L,
+            framesRead = 100,
+            nonZeroFrames = 0,
+            peakAmplitude = 0f,
+            bluetoothRouteAtCapture = AudioRouteProof(routeState = AudioRouteProofState.ROUTE_BLUETOOTH_ACTIVE),
+            rawAudioPersisted = false,
+        )
+
+        val run = VoiceProofRun.start("proof-blocking", targetSessionCount = 1, startedAtMs = 1_000L)
+            .recordAudioProbe(probe)
+            .recordSpeechSession(successfulSpeechMetrics("speech-1"))
+
+        assertEquals(VoiceProofRunStatus.PASSED, run.status)
+        assertTrue(run.summary.hasBlockingFailures)
+        assertTrue(run.summary.failureReasons.contains("audio_probe_no_signal"))
+    }
+
+    @Test
+    fun `proof summary has no blocking failures when everything is clean`() {
+        val run = VoiceProofRun.start("proof-clean", targetSessionCount = 1, startedAtMs = 1_000L)
+            .recordSpeechSession(successfulSpeechMetrics("speech-1"))
+
+        assertEquals(VoiceProofRunStatus.PASSED, run.status)
+        assertFalse(run.summary.hasBlockingFailures)
+        assertTrue(run.summary.failureReasons.isEmpty())
+    }
+
+    @Test
+    fun `audio probe with no signal adds audio_probe_no_signal failure reason`() {
+        val probe = AudioProbeMetrics(
+            initStatus = AudioProbeInitStatus.STARTED,
+            startedAtMs = 1_000L,
+            finishedAtMs = 1_500L,
+            framesRead = 100,
+            nonZeroFrames = 0,
+            peakAmplitude = 0f,
+            bluetoothRouteAtCapture = AudioRouteProof(routeState = AudioRouteProofState.ROUTE_BLUETOOTH_ACTIVE),
+            rawAudioPersisted = false,
+        )
+
+        val run = VoiceProofRun.start("proof-5", targetSessionCount = 1, startedAtMs = 1_000L)
+            .recordAudioProbe(probe)
+            .recordSpeechSession(successfulSpeechMetrics("speech-1"))
+
+        assertTrue(run.summary.failureReasons.contains("audio_probe_no_signal"))
+    }
+
+    @Test
+    fun `audio probe with read errors adds audio_probe_read_failed failure reason`() {
+        val probe = AudioProbeMetrics(
+            initStatus = AudioProbeInitStatus.STARTED,
+            startedAtMs = 1_000L,
+            finishedAtMs = 1_500L,
+            framesRead = 100,
+            nonZeroFrames = 50,
+            readErrorCount = 3,
+            peakAmplitude = 0.2f,
+            bluetoothRouteAtCapture = AudioRouteProof(routeState = AudioRouteProofState.ROUTE_BLUETOOTH_ACTIVE),
+            rawAudioPersisted = false,
+        )
+
+        val run = VoiceProofRun.start("proof-6", targetSessionCount = 1, startedAtMs = 1_000L)
+            .recordAudioProbe(probe)
+            .recordSpeechSession(successfulSpeechMetrics("speech-1"))
+
+        assertTrue(run.summary.failureReasons.contains("audio_probe_read_failed"))
+    }
+
+    @Test
+    fun `healthy audio probe adds neither no_signal nor read_failed`() {
+        val probe = AudioProbeMetrics(
+            initStatus = AudioProbeInitStatus.STARTED,
+            startedAtMs = 1_000L,
+            finishedAtMs = 1_500L,
+            framesRead = 100,
+            nonZeroFrames = 50,
+            readErrorCount = 0,
+            peakAmplitude = 0.2f,
+            bluetoothRouteAtCapture = AudioRouteProof(routeState = AudioRouteProofState.ROUTE_BLUETOOTH_ACTIVE),
+            rawAudioPersisted = false,
+        )
+
+        val run = VoiceProofRun.start("proof-7", targetSessionCount = 1, startedAtMs = 1_000L)
+            .recordAudioProbe(probe)
+            .recordSpeechSession(successfulSpeechMetrics("speech-1"))
+
+        assertFalse(run.summary.failureReasons.contains("audio_probe_no_signal"))
+        assertFalse(run.summary.failureReasons.contains("audio_probe_read_failed"))
+    }
+
     private fun successfulSpeechMetrics(sessionId: String): SpeechSessionMetrics =
         SpeechSessionMetrics(
             sessionId = sessionId,
@@ -109,6 +206,7 @@ class VoiceProofRunTest {
                 routeState = AudioRouteProofState.ROUTE_BLUETOOTH_ACTIVE,
                 routeRequestedAtMs = 1_010L,
                 routeReadyAtMs = 1_070L,
+                selectedDeviceType = "synthetic_pcm",
             ),
             readyForSpeechAtMs = 1_100L,
             beginSpeechAtMs = 1_180L,

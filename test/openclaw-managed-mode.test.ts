@@ -14,7 +14,16 @@ class MemoryNotifier implements Notifier {
   }
 }
 
-describe('managed openclaw mode', () => {
+const openClawSandboxAvailable = (() => {
+  try {
+    require.resolve('@mariozechner/pi-agent-core');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+describe.skipIf(!openClawSandboxAvailable)('managed openclaw mode', () => {
   let repoDir: string;
   let auditLogPath: string;
 

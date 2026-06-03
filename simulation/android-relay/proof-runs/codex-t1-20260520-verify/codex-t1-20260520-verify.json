@@ -1,0 +1,56 @@
+{
+  "proofRunId": "codex-t1-20260520-verify",
+  "startedAt": "2026-05-20T09:38:47.511Z",
+  "proofTier": "T1_EMULATOR_SYNTHETIC",
+  "phoneModel": "emulator",
+  "androidVersion": "15",
+  "earbudModel": "emulator_synthetic",
+  "providerId": "emulator",
+  "wakePath": "android_push_to_talk",
+  "inputPath": "synthetic_text",
+  "outputPath": "fake_tts",
+  "engineId": "synthetic",
+  "bridgeMode": "local",
+  "routeProofSource": "synthetic",
+  "physicalBluetoothProven": false,
+  "status": "PASSED",
+  "blockingFailures": [],
+  "sessions": [
+    {
+      "sessionNumber": 1,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true,
+      "routeState": "ROUTE_PHONE_MIC",
+      "routeSucceeded": true
+    },
+    {
+      "sessionNumber": 2,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true,
+      "routeState": "ROUTE_PHONE_MIC",
+      "routeSucceeded": true
+    },
+    {
+      "sessionNumber": 3,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true,
+      "routeState": "ROUTE_PHONE_MIC",
+      "routeSucceeded": true
+    }
+  ],
+  "interruptionTests": [],
+  "appVersion": "1.0.0",
+  "bridgeVersion": "1.0.0",
+  "redactionMetadata": {
+    "rawAudioStored": false,
+    "transcriptsRedacted": true,
+    "personalDataRemoved": true
+  },
+  "diagnosticExportHash": "sha256-placeholder"
+}

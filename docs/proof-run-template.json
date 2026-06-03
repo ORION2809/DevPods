@@ -1,0 +1,55 @@
+{
+  "proofRunId": "PHONE-ANDROID-EARBUDS-YYYYMMDD-HHMMSS",
+  "startedAt": "2026-05-19T10:00:00Z",
+  "completedAt": "2026-05-19T10:30:00Z",
+  "proofTier": "T4_PHYSICAL_ANDROID_EARBUDS",
+  "phoneModel": "Pixel 8",
+  "androidVersion": "15",
+  "earbudModel": "realme Buds Air7",
+  "providerId": "realme_buds_air7",
+  "wakePath": "android_media_session",
+  "inputPath": "android_bluetooth_headset",
+  "outputPath": "android_tts_bluetooth",
+  "engineId": "platform_speech_recognizer",
+  "bridgeMode": "local",
+  "routeProofSource": "physical_bluetooth",
+  "physicalBluetoothProven": true,
+  "status": "template",
+  "blockingFailures": [],
+  "sessions": [
+    {
+      "sessionNumber": 1,
+      "wakeDetected": true,
+      "wakeProvider": "android_media_session",
+      "routeSettleMs": 180,
+      "routeState": "ROUTE_BLUETOOTH_ACTIVE",
+      "sttProducedTranscript": true,
+      "sttEndpointReason": "FINAL",
+      "bridgeReached": true,
+      "bridgeLatencyMs": 45,
+      "ttsPlayed": true,
+      "ttsStartDelayMs": 320,
+      "bargeInTested": false,
+      "bargeInTargetMet": null,
+      "bargeInLatencyMs": null,
+      "wrongMicSuspected": false,
+      "notes": ""
+    }
+  ],
+  "interruptionTests": [
+    {
+      "testNumber": 1,
+      "targetMet": true,
+      "ttsStopLatencyMs": 120,
+      "listeningStartLatencyMs": 180
+    }
+  ],
+  "appVersion": "1.0.0",
+  "bridgeVersion": "1.0.0",
+  "redactionMetadata": {
+    "rawAudioStored": false,
+    "transcriptsRedacted": true,
+    "personalDataRemoved": true
+  },
+  "diagnosticExportHash": "sha256-placeholder"
+}

@@ -66,6 +66,20 @@ internal fun classifySpeechRecognizerError(error: Int): SpeechRecognitionFailure
             endpointReason = SpeechEndpointReason.RECOGNIZER_BUSY,
         )
 
+        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> SpeechRecognitionFailure(
+            message = "Speech recognition received too many requests. Resetting before the next attempt.",
+            shouldResetSession = true,
+            errorCode = error,
+            endpointReason = SpeechEndpointReason.RECOGNIZER_BUSY,
+        )
+
+        SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> SpeechRecognitionFailure(
+            message = "Speech recognition service disconnected. Resetting before the next attempt.",
+            shouldResetSession = true,
+            errorCode = error,
+            endpointReason = SpeechEndpointReason.CLIENT_ERROR,
+        )
+
         SpeechRecognizer.ERROR_SERVER -> SpeechRecognitionFailure(
             message = "Speech recognition server error.",
             shouldResetSession = false,
@@ -82,6 +96,14 @@ internal fun classifySpeechRecognizerError(error: Int): SpeechRecognitionFailure
     }
 }
 
+internal fun emptySpeechRecognitionResultFailure(): SpeechRecognitionFailure =
+    SpeechRecognitionFailure(
+        message = "No speech was detected. Try again.",
+        shouldResetSession = false,
+        errorCode = SpeechRecognizer.ERROR_NO_MATCH,
+        endpointReason = SpeechEndpointReason.NO_SPEECH,
+    )
+
 internal class AndroidSpeechRecognizer(context: Context) {
     private val appContext = context.applicationContext
     private var speechRecognizer: SpeechRecognizer? = null
@@ -90,8 +112,22 @@ internal class AndroidSpeechRecognizer(context: Context) {
 
     fun isOnDeviceRecognitionAvailable(): Boolean = SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
 
+    fun prepare(onDeviceOnly: Boolean = false): Boolean {
+        if (!isRecognitionAvailable()) {
+            return false
+        }
+        if (onDeviceOnly && !isOnDeviceRecognitionAvailable()) {
+            return false
+        }
+        if (speechRecognizer == null) {
+            speechRecognizer = createRecognizer(onDeviceOnly)
+        }
+        return true
+    }
+
     fun startListening(
         completeSilenceMs: Long = 750L,
+        possibleCompleteSilenceMs: Long = 0L,
         minimumLengthMs: Long = 300L,
         preferOffline: Boolean = false,
         onDeviceOnly: Boolean = false,
@@ -167,6 +203,8 @@ internal class AndroidSpeechRecognizer(context: Context) {
 
                 if (transcript.isNotBlank()) {
                     onFinalTranscript(transcript)
+                } else {
+                    onError(emptySpeechRecognitionResultFailure())
                 }
             }
 
@@ -189,6 +227,9 @@ internal class AndroidSpeechRecognizer(context: Context) {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline || onDeviceOnly)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, completeSilenceMs)
+            if (possibleCompleteSilenceMs > 0L) {
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, possibleCompleteSilenceMs)
+            }
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, minimumLengthMs)
         }
 

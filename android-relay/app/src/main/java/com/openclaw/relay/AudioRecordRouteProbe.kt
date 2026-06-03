@@ -8,6 +8,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
+import com.openclaw.relay.audio.AudioCaptureOwner
+import com.openclaw.relay.audio.CaptureOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -17,12 +19,14 @@ internal data class AudioProbeRequest(
     val durationMs: Long = 1_200L,
     val sampleRateHz: Int = 16_000,
     val windowSize: Int = 512,
+    val sessionId: String = "route-probe",
 )
 
 internal class AudioRecordRouteProbe(
     context: Context,
     private val routeSnapshotProvider: () -> RelayAudioRouteSnapshot,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val captureOwner: AudioCaptureOwner? = null,
     private val audioSourceCandidates: List<Int> = listOf(
         MediaRecorder.AudioSource.VOICE_RECOGNITION,
         MediaRecorder.AudioSource.MIC,
@@ -46,64 +50,90 @@ internal class AudioRecordRouteProbe(
                 )
             }
 
-            val minBufferSize = AudioRecord.getMinBufferSize(
-                request.sampleRateHz,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-            )
-            if (minBufferSize <= 0) {
-                return@withContext AudioProbeMetrics.notStarted(
-                    status = AudioProbeInitStatus.UNSUPPORTED_FORMAT,
-                    routeSnapshot = routeSnapshot,
-                    startedAtMs = startedAtMs,
-                    finishedAtMs = clock(),
-                    errorMessage = "AudioRecord does not support 16 kHz mono PCM on this device.",
-                )
-            }
-
-            stopRequested = false
-            val bufferSizeBytes = maxOf(minBufferSize, request.windowSize * Short.SIZE_BYTES)
-            var lastFailure: AudioProbeMetrics? = null
-            for (source in audioSourceCandidates) {
-                val sourceName = audioSourceName(source)
-                val recorder = tryCreateAudioRecord(
-                    source = source,
-                    sampleRateHz = request.sampleRateHz,
-                    bufferSizeBytes = bufferSizeBytes,
-                )
-                if (recorder == null) {
-                    lastFailure = AudioProbeMetrics.notStarted(
+            if (captureOwner != null) {
+                val lease = captureOwner.acquire(CaptureOwner.AUDIO_RECORD_ROUTE_PROBE, request.sessionId)
+                if (lease == null) {
+                    return@withContext AudioProbeMetrics.notStarted(
                         status = AudioProbeInitStatus.MIC_BUSY,
                         routeSnapshot = routeSnapshot,
                         startedAtMs = startedAtMs,
                         finishedAtMs = clock(),
-                        errorMessage = "$sourceName microphone route could not be opened.",
+                        errorMessage = "Microphone is busy: ${captureOwner.currentOwnerName()}",
                     )
-                    continue
                 }
-
-                val metrics = captureAmplitudeSummary(
-                    audioRecord = recorder,
-                    sourceName = sourceName,
-                    request = request,
-                    bufferSizeBytes = bufferSizeBytes,
-                    routeSnapshot = routeSnapshot,
-                    startedAtMs = startedAtMs,
-                )
-                if (metrics.initStatus == AudioProbeInitStatus.STARTED || source == audioSourceCandidates.last()) {
-                    return@withContext metrics
+                try {
+                    return@withContext runProbeWithRecorder(request, routeSnapshot, startedAtMs)
+                } finally {
+                    lease.release()
                 }
-                lastFailure = metrics
+            } else {
+                return@withContext runProbeWithRecorder(request, routeSnapshot, startedAtMs)
             }
+        }
 
-            lastFailure ?: AudioProbeMetrics.notStarted(
-                status = AudioProbeInitStatus.ERROR,
+    private suspend fun runProbeWithRecorder(
+        request: AudioProbeRequest,
+        routeSnapshot: RelayAudioRouteSnapshot,
+        startedAtMs: Long,
+    ): AudioProbeMetrics {
+        val minBufferSize = AudioRecord.getMinBufferSize(
+            request.sampleRateHz,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        if (minBufferSize <= 0) {
+            return AudioProbeMetrics.notStarted(
+                status = AudioProbeInitStatus.UNSUPPORTED_FORMAT,
                 routeSnapshot = routeSnapshot,
                 startedAtMs = startedAtMs,
                 finishedAtMs = clock(),
-                errorMessage = "AudioRecord probe could not start.",
+                errorMessage = "AudioRecord does not support 16 kHz mono PCM on this device.",
             )
         }
+
+        stopRequested = false
+        val bufferSizeBytes = maxOf(minBufferSize, request.windowSize * Short.SIZE_BYTES)
+        var lastFailure: AudioProbeMetrics? = null
+        for (source in audioSourceCandidates) {
+            val sourceName = audioSourceName(source)
+            val recorder = tryCreateAudioRecord(
+                source = source,
+                sampleRateHz = request.sampleRateHz,
+                bufferSizeBytes = bufferSizeBytes,
+            )
+            if (recorder == null) {
+                lastFailure = AudioProbeMetrics.notStarted(
+                    status = AudioProbeInitStatus.MIC_BUSY,
+                    routeSnapshot = routeSnapshot,
+                    startedAtMs = startedAtMs,
+                    finishedAtMs = clock(),
+                    errorMessage = "$sourceName microphone route could not be opened.",
+                )
+                continue
+            }
+
+            val metrics = captureAmplitudeSummary(
+                audioRecord = recorder,
+                sourceName = sourceName,
+                request = request,
+                bufferSizeBytes = bufferSizeBytes,
+                routeSnapshot = routeSnapshot,
+                startedAtMs = startedAtMs,
+            )
+            if (metrics.initStatus == AudioProbeInitStatus.STARTED || source == audioSourceCandidates.last()) {
+                return metrics
+            }
+            lastFailure = metrics
+        }
+
+        return lastFailure ?: AudioProbeMetrics.notStarted(
+            status = AudioProbeInitStatus.ERROR,
+            routeSnapshot = routeSnapshot,
+            startedAtMs = startedAtMs,
+            finishedAtMs = clock(),
+            errorMessage = "AudioRecord probe could not start.",
+        )
+    }
 
     fun stop() {
         stopRequested = true

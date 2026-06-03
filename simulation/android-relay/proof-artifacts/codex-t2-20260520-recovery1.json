@@ -1,0 +1,17 @@
+﻿{
+    "artifactId": "codex-t2-20260520-recovery1",
+    "proofTier": "T2_EMULATOR_HOST_AUDIO",
+    "timestamp": 1779273082693,
+    "status": "FAILED",
+    "hasBlockingFailures": true,
+    "failureReasons": [
+        "route_failed",
+        "stt_failed"
+    ],
+    "successfulSessionCount": 0,
+    "targetSessionCount": 5,
+    "interruptionTargetMetCount": 5,
+    "routeSuccessCount": 1,
+    "sttSuccessCount": 0,
+    "appVersion": "1.0.0"
+}

@@ -78,6 +78,47 @@ object DiagnosticExport {
     )
 
     @Serializable
+    data class RedactedCalibrationProfile(
+        val profileId: String? = null,
+        val deviceModel: String? = null,
+        val phoneModel: String? = null,
+        val providerId: String? = null,
+        val confidence: String = "unsupported",
+        val provenGestures: List<String> = emptyList(),
+        val repeatableGestures: List<String> = emptyList(),
+        val fullyProvenGestures: List<String> = emptyList(),
+        val gestureMappings: Map<String, String> = emptyMap(),
+        val routeProofPassed: Boolean = false,
+        val createdAtMs: Long? = null,
+        val isModelScoped: Boolean = false,
+        val runtimeMissCount: Int = 0,
+        val recentUnmatchedSignals: List<RedactedUnmatchedSignal> = emptyList(),
+        val recentMatchedSignals: List<RedactedMatchedSignal> = emptyList(),
+        val appVersion: String? = null,
+        val androidVersion: String? = null,
+        val providerIdAtCreation: String? = null,
+        val runtimeMissCountAtCreation: Int = 0,
+        val longPressThresholdMs: Long = 700L,
+        val multiTapWindowMs: Long = 400L,
+    )
+
+    @Serializable
+    data class RedactedUnmatchedSignal(
+        val providerId: String? = null,
+        val gestureType: String = "unknown",
+        val reason: String = "unknown",
+        val observedAtMs: Long? = null,
+    )
+
+    @Serializable
+    data class RedactedMatchedSignal(
+        val providerId: String? = null,
+        val gestureType: String = "unknown",
+        val action: String = "unknown",
+        val observedAtMs: Long? = null,
+    )
+
+    @Serializable
     data class RedactedVoiceDiagnostics(
         val speechSessionId: String? = null,
         val speechEngine: String? = null,
@@ -108,10 +149,18 @@ object DiagnosticExport {
         val offlineModelVersion: String? = null,
         val offlineModelFootprintBytes: Long = 0L,
         val offlineFailureReasons: List<String> = emptyList(),
+        val sherpaVadReady: Boolean = false,
+        val sherpaSttReady: Boolean = false,
+        val sherpaRuntimeAvailable: Boolean = false,
+        val sherpaFeatureFlags: List<String> = emptyList(),
         val lastMediaButton: RedactedMediaButtonEvent? = null,
         val foregroundControls: RedactedForegroundControls = RedactedForegroundControls(),
         val foregroundService: RedactedForegroundService = RedactedForegroundService(),
         val proofRun: RedactedVoiceProofRun? = null,
+        val rollingSummary: RedactedRollingSummary? = null,
+        val calibration: RedactedCalibrationProfile = RedactedCalibrationProfile(),
+        // Workstream 0: latency summary
+        val latencySummary: RedactedLatencySummary? = null,
     )
 
     @Serializable
@@ -156,15 +205,58 @@ object DiagnosticExport {
         val routeFailureCount: Int,
         val sttSuccessCount: Int,
         val wrongMicSuspectedCount: Int,
+        val interruptionTargetMetCount: Int,
         val reliabilityPercent: Int,
         val audioProbeSuccessCount: Int,
         val failureReasons: List<String>,
+    )
+
+    @Serializable
+    data class RedactedRollingSummary(
+        val totalSpeechSessions: Int = 0,
+        val speechDetectionRatePercent: Int = 0,
+        val routeSuccessRatePercent: Int = 0,
+        val averageRouteSettleMs: Double? = null,
+        val wrongMicSuspectedCount: Int = 0,
+        val ttsPlaybackCount: Int = 0,
+        val interruptionTargetMetCount: Int = 0,
+    )
+
+    @Serializable
+    data class RedactedLatencySummary(
+        val gestureReceivedToRouteRequestedP50: Long? = null,
+        val gestureReceivedToRouteRequestedP95: Long? = null,
+        val routeRequestedToRouteReadyP50: Long? = null,
+        val routeRequestedToRouteReadyP95: Long? = null,
+        val gestureReceivedToListeningStartedP50: Long? = null,
+        val gestureReceivedToListeningStartedP95: Long? = null,
+        val recognizerCreateP50: Long? = null,
+        val recognizerCreateP95: Long? = null,
+        val listeningStartedToReadyP50: Long? = null,
+        val listeningStartedToReadyP95: Long? = null,
+        val readyToFirstRmsP50: Long? = null,
+        val readyToFirstRmsP95: Long? = null,
+        val readyToSpeechStartP50: Long? = null,
+        val readyToSpeechStartP95: Long? = null,
+        val speechStartToPartialP50: Long? = null,
+        val speechStartToPartialP95: Long? = null,
+        val finalizationDelayP50: Long? = null,
+        val finalizationDelayP95: Long? = null,
+        val finalTranscriptToBridgeRequestP50: Long? = null,
+        val finalTranscriptToBridgeRequestP95: Long? = null,
+        val bridgeRequestDurationP50: Long? = null,
+        val bridgeRequestDurationP95: Long? = null,
+        val bridgeResponseToTtsRequestedP50: Long? = null,
+        val bridgeResponseToTtsRequestedP95: Long? = null,
+        val ttsRequestToStartP50: Long? = null,
+        val ttsRequestToStartP95: Long? = null,
     )
 
     fun build(
         context: Context,
         state: RelayUiState,
         options: DiagnosticExportOptions = DiagnosticExportOptions(),
+        rollingSummary: com.openclaw.relay.VoiceDiagnosticsExportSummary? = null,
     ): RedactedDiagnostic {
         val deviceState = state.currentDeviceState
         val deviceInfo = deviceState?.let {
@@ -207,14 +299,18 @@ object DiagnosticExport {
                 ttsReady = state.ttsReady,
             ),
             providers = providers,
-            capabilityMatrix = if (options.includeCapabilityMatrix) state.capabilityMatrix else DeviceCapabilityMatrix(),
+            capabilityMatrix = if (options.includeCapabilityMatrix) {
+                redactCapabilityMatrix(state.capabilityMatrix)
+            } else {
+                DeviceCapabilityMatrix()
+            },
             recentErrors = if (options.includeErrorCategories) listOfNotNull(
                 state.lastSpeechError?.let { "speech: ${redactErrorMessage(it)}" },
                 state.lastTtsError?.let { "tts: ${redactErrorMessage(it)}" },
                 state.errorMessage?.let { "general: ${redactErrorMessage(it)}" },
             ) else emptyList(),
             setupPhase = state.setupPhase.name.lowercase(),
-            voice = buildVoiceDiagnostics(state, options),
+            voice = buildVoiceDiagnostics(state, options, rollingSummary),
         )
     }
 
@@ -222,16 +318,18 @@ object DiagnosticExport {
         context: Context,
         state: RelayUiState,
         options: DiagnosticExportOptions = DiagnosticExportOptions(),
+        rollingSummary: com.openclaw.relay.VoiceDiagnosticsExportSummary? = null,
     ): String {
-        return json.encodeToString(build(context, state, options))
+        return json.encodeToString(build(context, state, options, rollingSummary))
     }
 
     fun share(
         context: Context,
         state: RelayUiState,
         options: DiagnosticExportOptions = DiagnosticExportOptions(),
+        rollingSummary: com.openclaw.relay.VoiceDiagnosticsExportSummary? = null,
     ) {
-        val payload = toJson(context, state, options)
+        val payload = toJson(context, state, options, rollingSummary)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, "DevPods Relay Diagnostic Export")
@@ -241,11 +339,23 @@ object DiagnosticExport {
         context.startActivity(chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    private fun redactCapabilityMatrix(matrix: com.openclaw.relay.device.DeviceCapabilityMatrix): com.openclaw.relay.device.DeviceCapabilityMatrix {
+        return com.openclaw.relay.device.DeviceCapabilityMatrix(
+            entries = matrix.entries.map { entry ->
+                entry.copy(
+                    deviceModel = redactModelName(entry.deviceModel) ?: entry.deviceModel,
+                )
+            }
+        )
+    }
+
     private fun redactModelName(name: String?): String? {
         if (name == null) return null
         return name
             .replace(Regex("[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}"), "**:**:**:**:**:**")
             .replace(Regex("[0-9A-Fa-f]{12}"), "************")
+            // Strip possessive personal prefixes like "Alice's AirPods Pro"
+            .replace(Regex("^[A-Za-z0-9\\s]+['\u2019]s\\s+"), "[personalized] ")
             .take(80)
     }
 
@@ -276,6 +386,7 @@ object DiagnosticExport {
     private fun buildVoiceDiagnostics(
         state: RelayUiState,
         options: DiagnosticExportOptions,
+        rollingSummary: com.openclaw.relay.VoiceDiagnosticsExportSummary? = null,
     ): RedactedVoiceDiagnostics {
         val speech = state.voiceDiagnostics.lastSpeechSession
         val vad = state.voiceDiagnostics.lastVadObservation
@@ -324,6 +435,15 @@ object DiagnosticExport {
             offlineModelVersion = offline.modelVersion,
             offlineModelFootprintBytes = offline.modelFootprintBytes,
             offlineFailureReasons = offline.failureReasons,
+            sherpaVadReady = offline.sherpaReadiness?.vadReady ?: false,
+            sherpaSttReady = offline.sherpaReadiness?.sttReady ?: false,
+            sherpaRuntimeAvailable = offline.sherpaReadiness?.runtimeAvailability?.isAvailable ?: false,
+            sherpaFeatureFlags = buildList {
+                if (offline.sherpaFeatureFlags.sherpaRuntimeEnabled) add("runtime_enabled")
+                if (offline.sherpaFeatureFlags.sherpaVadDiagnosticsEnabled) add("vad_diagnostics_enabled")
+                if (offline.sherpaFeatureFlags.sherpaSttExperimentalEnabled) add("stt_experimental_enabled")
+                if (offline.sherpaFeatureFlags.sherpaModelDownloadsEnabled) add("model_downloads_enabled")
+            },
             lastMediaButton = mediaButton?.let {
                 RedactedMediaButtonEvent(
                     keyLabel = it.keyLabel,
@@ -364,12 +484,111 @@ object DiagnosticExport {
                     routeFailureCount = proofSummary.routeFailureCount,
                     sttSuccessCount = proofSummary.sttSuccessCount,
                     wrongMicSuspectedCount = proofSummary.wrongMicSuspectedCount,
+                    interruptionTargetMetCount = proofSummary.interruptionTargetMetCount,
                     reliabilityPercent = proofSummary.reliabilityPercent,
                     audioProbeSuccessCount = proofSummary.audioProbeSuccessCount,
                     failureReasons = proofSummary.failureReasons,
                 )
             },
+            rollingSummary = rollingSummary?.let {
+                RedactedRollingSummary(
+                    totalSpeechSessions = it.totalSpeechSessions,
+                    speechDetectionRatePercent = it.speechDetectionRatePercent,
+                    routeSuccessRatePercent = it.routeSuccessRatePercent,
+                    averageRouteSettleMs = it.averageRouteSettleMs,
+                    wrongMicSuspectedCount = it.wrongMicSuspectedCount,
+                    ttsPlaybackCount = it.ttsPlaybackCount,
+                    interruptionTargetMetCount = it.interruptionTargetMetCount,
+                )
+            },
+            latencySummary = if (state.config.latencySummaryExportEnabled) {
+                rollingSummary?.latencySummary?.let {
+                    RedactedLatencySummary(
+                        gestureReceivedToRouteRequestedP50 = it.gestureReceivedToRouteRequestedP50,
+                        gestureReceivedToRouteRequestedP95 = it.gestureReceivedToRouteRequestedP95,
+                        routeRequestedToRouteReadyP50 = it.routeRequestedToRouteReadyP50,
+                        routeRequestedToRouteReadyP95 = it.routeRequestedToRouteReadyP95,
+                        gestureReceivedToListeningStartedP50 = it.gestureReceivedToListeningStartedP50,
+                        gestureReceivedToListeningStartedP95 = it.gestureReceivedToListeningStartedP95,
+                        recognizerCreateP50 = it.recognizerCreateP50,
+                        recognizerCreateP95 = it.recognizerCreateP95,
+                        listeningStartedToReadyP50 = it.listeningStartedToReadyP50,
+                        listeningStartedToReadyP95 = it.listeningStartedToReadyP95,
+                        readyToFirstRmsP50 = it.readyToFirstRmsP50,
+                        readyToFirstRmsP95 = it.readyToFirstRmsP95,
+                        readyToSpeechStartP50 = it.readyToSpeechStartP50,
+                        readyToSpeechStartP95 = it.readyToSpeechStartP95,
+                    speechStartToPartialP50 = it.speechStartToPartialP50,
+                    speechStartToPartialP95 = it.speechStartToPartialP95,
+                    finalizationDelayP50 = it.finalizationDelayP50,
+                    finalizationDelayP95 = it.finalizationDelayP95,
+                    finalTranscriptToBridgeRequestP50 = it.finalTranscriptToBridgeRequestP50,
+                    finalTranscriptToBridgeRequestP95 = it.finalTranscriptToBridgeRequestP95,
+                    bridgeRequestDurationP50 = it.bridgeRequestDurationP50,
+                    bridgeRequestDurationP95 = it.bridgeRequestDurationP95,
+                    bridgeResponseToTtsRequestedP50 = it.bridgeResponseToTtsRequestedP50,
+                    bridgeResponseToTtsRequestedP95 = it.bridgeResponseToTtsRequestedP95,
+                    ttsRequestToStartP50 = it.ttsRequestToStartP50,
+                    ttsRequestToStartP95 = it.ttsRequestToStartP95,
+                )
+            }
+        } else null,
+        calibration = buildCalibrationDiagnostics(state),
         )
+    }
+
+    private fun buildCalibrationDiagnostics(state: RelayUiState): RedactedCalibrationProfile {
+        val profile = state.calibrationProfile
+        val unmatched = state.recentUnmatchedSignals.map { record ->
+            RedactedUnmatchedSignal(
+                providerId = record.providerId,
+                gestureType = record.gestureType.lowercase(),
+                reason = record.reason,
+                observedAtMs = record.timestampMs,
+            )
+        }
+        val matched = state.recentMatchedSignals.map { record ->
+            RedactedMatchedSignal(
+                providerId = record.providerId,
+                gestureType = record.gestureType.lowercase(),
+                action = record.action.lowercase(),
+                observedAtMs = record.timestampMs,
+            )
+        }
+        return if (profile == null) {
+            RedactedCalibrationProfile(
+                runtimeMissCount = state.runtimeMissCount,
+                recentUnmatchedSignals = unmatched,
+                recentMatchedSignals = matched,
+            )
+        } else {
+            val repeatable = profile.repeatableGestures().map { it.requestedGesture.name.lowercase() }
+            val fullyProven = profile.fullyProvenGestures().map { it.requestedGesture.name.lowercase() }
+            RedactedCalibrationProfile(
+                profileId = profile.profileId,
+                deviceModel = redactModelName(profile.deviceModel),
+                phoneModel = profile.phoneModel,
+                providerId = profile.providerId,
+                confidence = if (profile.routeProof?.isSuccess == true) profile.confidence.name.lowercase() else "observed_repeatable",
+                provenGestures = repeatable,
+                repeatableGestures = repeatable,
+                fullyProvenGestures = fullyProven,
+                gestureMappings = profile.gestureActionMap.mappings.mapKeys { it.key.name.lowercase() }
+                    .mapValues { it.value.name.lowercase() },
+                routeProofPassed = profile.routeProof?.isSuccess ?: false,
+                createdAtMs = profile.createdAtMs,
+                isModelScoped = profile.isModelScoped,
+                runtimeMissCount = state.runtimeMissCount,
+                recentUnmatchedSignals = unmatched,
+                recentMatchedSignals = matched,
+                appVersion = profile.appVersion,
+                androidVersion = profile.androidVersion,
+                providerIdAtCreation = profile.providerIdAtCreation,
+                runtimeMissCountAtCreation = profile.runtimeMissCountAtCreation,
+                longPressThresholdMs = profile.longPressThresholdMs,
+                multiTapWindowMs = profile.multiTapWindowMs,
+            )
+        }
     }
 
     private fun describeEarState(earState: com.openclaw.relay.signal.EarState?): String {

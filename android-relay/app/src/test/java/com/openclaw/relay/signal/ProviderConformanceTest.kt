@@ -131,4 +131,71 @@ class ProviderConformanceTest {
         val failures = ProviderConformance.assertProbe(result)
         assertTrue(failures.isEmpty())
     }
+
+    @Test
+    fun `assertProbe passes for provider with speculative candidate support`() {
+        val result = EarbudSignalProvider.ProbeResult(
+            success = true,
+            detectedDevice = true,
+            detectedGestures = listOf(
+                EarbudSignalProvider.GestureDetected(
+                    gestureType = GestureType.SINGLE_PRESS,
+                    budSide = null,
+                    confidence = SignalConfidence.OBSERVED,
+                ),
+                EarbudSignalProvider.GestureDetected(
+                    gestureType = GestureType.DOUBLE_PRESS,
+                    budSide = null,
+                    confidence = SignalConfidence.OBSERVED,
+                ),
+                EarbudSignalProvider.GestureDetected(
+                    gestureType = GestureType.LONG_PRESS,
+                    budSide = null,
+                    confidence = SignalConfidence.OBSERVED,
+                ),
+            ),
+            message = "Media session active with candidate and confirmed gesture support",
+        )
+        val failures = ProviderConformance.assertProbe(result)
+        assertTrue(failures.isEmpty())
+    }
+
+    @Test
+    fun `assertCapabilityProfile passes for provider with wake and interrupt capabilities`() {
+        val profile = EarbudCapabilityProfile(
+            providerId = "test",
+            deviceModel = null,
+            capabilities = listOf(
+                Capability.WAKE_SINGLE_PRESS,
+                Capability.WAKE_LONG_PRESS,
+                Capability.INTERRUPT_DOUBLE_PRESS,
+                Capability.APPROVE_DOUBLE_PRESS,
+            ),
+            wakeGestures = mapOf(
+                GestureType.SINGLE_PRESS to CapabilityConfidence.PROVEN,
+                GestureType.LONG_PRESS to CapabilityConfidence.PROVEN,
+            ),
+            interruptGestures = mapOf(GestureType.DOUBLE_PRESS to CapabilityConfidence.PROVEN),
+            approvalGestures = mapOf(GestureType.TRIPLE_PRESS to CapabilityConfidence.PROVEN),
+            supportsBatteryStatus = false,
+            supportsEarDetection = false,
+            supportsAudioRouteControl = false,
+        )
+        val failures = ProviderConformance.assertCapabilityProfile(profile)
+        assertTrue(failures.isEmpty())
+    }
+
+    @Test
+    fun `assertCapabilityProfile flags missing wake capability for proven single press`() {
+        val profile = EarbudCapabilityProfile(
+            providerId = "test",
+            deviceModel = null,
+            capabilities = listOf(Capability.INTERRUPT_DOUBLE_PRESS),
+            wakeGestures = mapOf(GestureType.SINGLE_PRESS to CapabilityConfidence.PROVEN),
+            interruptGestures = emptyMap(),
+            approvalGestures = emptyMap(),
+        )
+        val failures = ProviderConformance.assertCapabilityProfile(profile)
+        assertTrue(failures.any { it.contains("PROVEN wake gesture but no WAKE_") })
+    }
 }

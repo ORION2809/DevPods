@@ -67,4 +67,35 @@ class TtsInterruptionMetricsTest {
         assertEquals(2, run.ttsInterruptions.size)
         assertEquals(1, run.summary.interruptionTargetMetCount)
     }
+    
+    @Test
+    fun `voice proof run includes interruption target missed failure reason`() {
+        val fast = TtsInterruptionMetrics(
+            interruptionId = "interrupt-fast",
+            reason = TtsInterruptionReason.BARGE_IN,
+            requestedAtMs = 1_000L,
+            ttsStoppedAtMs = 1_100L,
+            listeningStartedAtMs = 1_200L,
+        )
+        val slow = fast.copy(
+            interruptionId = "interrupt-slow",
+            requestedAtMs = 2_000L,
+            ttsStoppedAtMs = 2_310L,
+            listeningStartedAtMs = 2_420L,
+        )
+
+        // Test case with no interruptions missing the target
+        val run1 = VoiceProofRun.start("proof-interruption-1", targetSessionCount = 2, startedAtMs = 1_000L)
+            .recordTtsInterruption(fast)
+            .recordTtsInterruption(fast) // Both meet target
+
+        assertEquals(0, run1.summary.failureReasons.count { it == "interruption_target_missed" })
+
+        // Test case with at least one interruption missing the target
+        val run2 = VoiceProofRun.start("proof-interruption-2", targetSessionCount = 2, startedAtMs = 1_000L)
+            .recordTtsInterruption(fast)
+            .recordTtsInterruption(slow) // One meets target, one misses target
+
+        assertEquals(1, run2.summary.failureReasons.count { it == "interruption_target_missed" })
+    }
 }

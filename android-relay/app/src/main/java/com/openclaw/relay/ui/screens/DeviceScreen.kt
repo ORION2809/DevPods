@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import com.openclaw.relay.RelayUiState
 import com.openclaw.relay.SetupPhase
+import com.openclaw.relay.calibration.CalibrationConfidence
 import com.openclaw.relay.device.CapabilityStatus
 import com.openclaw.relay.device.DeviceCapabilityEntry
 import com.openclaw.relay.isPaired
@@ -39,7 +40,11 @@ import com.openclaw.relay.ui.components.DevPodsChip
 import com.openclaw.relay.ui.components.DevPodsSmallButton
 import com.openclaw.relay.signal.ProviderHealthUi
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
 import com.openclaw.relay.ui.theme.PillShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun DeviceScreen(
@@ -57,6 +62,8 @@ fun DeviceScreen(
     onToggleAssistantFallback: () -> Unit,
     onTestVoice: () -> Unit,
     onRepairMic: () -> Unit,
+    onRecalibrate: () -> Unit = {},
+    onImportRemoteBridge: () -> Unit = {},
     modifier: Modifier = Modifier,
     capabilityEntry: DeviceCapabilityEntry? = null,
 ) {
@@ -64,28 +71,24 @@ fun DeviceScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(DevPodsSpacing.screenX),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = "Device",
             style = MaterialTheme.typography.headlineSmall,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
 
-        // A. Provider status
-        ProviderStatusCard(
-            providerHealth = uiState.providerHealth,
-            preferredProviderId = uiState.preferredProviderId,
-        )
-
-        // B. Earbuds not verified state
+        // 1. Verification / setup status
         if (capabilityEntry == null) {
             DevPodsCard(accentColor = DevPodsColor.Amber) {
                 Text(
                     text = "Earbuds not verified yet",
                     style = MaterialTheme.typography.titleMedium,
                     color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -101,12 +104,13 @@ fun DeviceScreen(
             }
         }
 
-        // B. Pair your desktop bridge
+        // 2. Pair bridge
         DevPodsCard(accentColor = DevPodsColor.Teal) {
             Text(
                 text = "Pair your desktop bridge",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -144,6 +148,13 @@ fun DeviceScreen(
                 modifier = Modifier.fillMaxWidth(),
                 style = ButtonStyle.Secondary,
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            DevPodsButton(
+                text = "Remote private network",
+                onClick = onImportRemoteBridge,
+                modifier = Modifier.fillMaxWidth(),
+                style = ButtonStyle.Secondary,
+            )
         }
 
         val pairingError = uiState.userFacingErrorMessage
@@ -156,46 +167,42 @@ fun DeviceScreen(
             )
         }
 
-        // C. Run guided setup button (prototype shows this as a standalone button)
-        if (uiState.setupPhase != SetupPhase.COMPLETE) {
+        // 3. Guided setup CTA / state
+        if (uiState.setupPhase != SetupPhase.COMPLETE_PROVEN && uiState.setupPhase != SetupPhase.COMPLETE_DEGRADED) {
             DevPodsButton(
                 text = "Run guided setup",
                 onClick = onResumeSetup,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-
-        // D. Setup lifecycle states
         when {
-            uiState.setupPhase == SetupPhase.COMPLETE -> {
-                SetupCompleteCard()
-            }
+            uiState.setupPhase == SetupPhase.COMPLETE_PROVEN -> SetupCompleteCard()
+            uiState.setupPhase == SetupPhase.COMPLETE_DEGRADED -> SetupDegradedCard(onResumeSetup = onResumeSetup)
             uiState.setupPhase == SetupPhase.NOT_STARTED && capabilityEntry != null -> {
-                SetupPausedCard(
-                    onResumeSetup = onResumeSetup,
-                    onSkipSetup = onSkipSetup,
-                )
+                SetupPausedCard(onResumeSetup = onResumeSetup, onSkipSetup = onSkipSetup)
             }
-            else -> {
-                // Show setup tools when setup is in progress or not started
-                SetupToolsCard(
-                    onReRunSetup = onReRunSetup,
-                    onResetSetup = onResetSetup,
-                )
-            }
+            else -> SetupToolsCard(onReRunSetup = onReRunSetup, onResetSetup = onResetSetup)
         }
 
-        // E. Capability summary
+        // 4. Calibration summary
+        CalibrationStatusCard(
+            profile = uiState.calibrationProfile,
+            calibrationRequired = uiState.calibrationRequired,
+            onRecalibrate = onRecalibrate,
+            onRunSetup = onResumeSetup,
+        )
+
+        // 5. Capability summary
         CapabilitySummaryCard(capabilityEntry = capabilityEntry)
 
-        // F. Bridge management
+        // 6. Bridge management
         BridgeManagementCard(
             uiState = uiState,
             onRePair = onRePair,
             onForgetBridge = onForgetBridge,
         )
 
-        // G. Listening fallbacks
+        // 7. Listening fallbacks
         ListeningFallbacksCard(
             bluetoothRoutingEnabled = uiState.config.useBluetoothRouting,
             phoneMicFallbackEnabled = uiState.phoneMicFallback,
@@ -205,11 +212,109 @@ fun DeviceScreen(
             onToggleAssistantFallback = onToggleAssistantFallback,
         )
 
-        // H. Speech and output
+        // 8. Speech and output
         SpeechAndOutputCard(
             onTestVoice = onTestVoice,
             onRepairMic = onRepairMic,
         )
+
+        // 9. Provider status (advanced detail, placed last per parity report)
+        ProviderStatusCard(
+            providerHealth = uiState.providerHealth,
+            preferredProviderId = uiState.preferredProviderId,
+        )
+    }
+}
+
+@Composable
+private fun CalibrationStatusCard(
+    profile: com.openclaw.relay.calibration.EarbudCalibrationProfile?,
+    calibrationRequired: Boolean,
+    onRecalibrate: () -> Unit,
+    onRunSetup: () -> Unit,
+) {
+    when {
+        profile != null && profile.isReadyForRuntime() -> {
+            DevPodsCard(accentColor = DevPodsColor.Teal) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Calibration",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DevPodsColor.Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DevPodsChip(text = "Calibrated", style = ChipStyle.Success)
+                    }
+                    Text(
+                        text = "${profile.provenGestures().size} gestures mapped",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DevPodsColor.Muted,
+                    )
+                    DevPodsSmallButton(
+                        text = "Recalibrate",
+                        onClick = onRecalibrate,
+                        style = ButtonStyle.Ghost,
+                    )
+                }
+            }
+        }
+        profile != null -> {
+            val ambiguous = profile.calibratedGestures.filter { it.confidence == CalibrationConfidence.AMBIGUOUS }
+            DevPodsCard(accentColor = DevPodsColor.Amber) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Calibration",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DevPodsColor.Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DevPodsChip(text = "Incomplete", style = ChipStyle.Warning)
+                    }
+                    if (ambiguous.isNotEmpty()) {
+                        Text(
+                            text = "Ambiguous: ${ambiguous.joinToString { it.requestedGesture.name.lowercase().replace("_", " ") }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = DevPodsColor.Muted,
+                        )
+                    }
+                    DevPodsSmallButton(
+                        text = "Complete calibration",
+                        onClick = onRecalibrate,
+                        style = ButtonStyle.Secondary,
+                    )
+                }
+            }
+        }
+        calibrationRequired -> {
+            DevPodsCard(accentColor = DevPodsColor.Red) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Calibration",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DevPodsColor.Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DevPodsChip(text = "Not calibrated", style = ChipStyle.Error)
+                    }
+                    Text(
+                        text = "Run setup to calibrate your earbuds for reliable gesture detection.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DevPodsColor.Muted,
+                    )
+                    DevPodsSmallButton(
+                        text = "Run guided setup",
+                        onClick = onRunSetup,
+                        style = ButtonStyle.Primary,
+                    )
+                }
+            }
+        }
+        else -> {
+            // No calibration needed and no profile — show nothing
+        }
     }
 }
 
@@ -231,6 +336,7 @@ private fun QrScanFailureCard(
             },
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -266,7 +372,7 @@ private fun QrCodePlaceholder() {
             .clip(RoundedCornerShape(20.dp))
             .background(DevPodsColor.TealSoft)
             .border(1.dp, DevPodsColor.Teal.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
-            .padding(16.dp),
+            .padding(DevPodsSpacing.screenX),
         contentAlignment = Alignment.Center,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -301,6 +407,7 @@ private fun SetupPausedCard(
             text = "Resume wake test",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -337,12 +444,38 @@ private fun SetupCompleteCard() {
             text = "Ready with fallback",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = "Wake is observed through Android media controls. Assistant fallback stays visible until direct controls are proven.",
             style = MaterialTheme.typography.bodyMedium,
             color = DevPodsColor.Muted,
+        )
+    }
+}
+
+@Composable
+private fun SetupDegradedCard(onResumeSetup: () -> Unit) {
+    DevPodsCard(accentColor = DevPodsColor.Amber) {
+        DevPodsChip(text = "Setup incomplete", style = ChipStyle.Warning)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Degraded profile saved",
+            style = MaterialTheme.typography.titleMedium,
+            color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Not all proof steps passed. You can still use DevPods, but some features rely on fallback paths. Rerun setup after fixing the reported issue.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = DevPodsColor.Muted,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        DevPodsSmallButton(
+            text = "Rerun setup",
+            onClick = onResumeSetup,
         )
     }
 }
@@ -357,6 +490,7 @@ private fun SetupToolsCard(
             text = "Setup tools",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
@@ -390,6 +524,7 @@ private fun CapabilitySummaryCard(capabilityEntry: DeviceCapabilityEntry?) {
             text = "Capability summary",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(12.dp))
         if (capabilityEntry == null) {
@@ -445,7 +580,13 @@ private fun CapabilityRow(
             color = DevPodsColor.Ink,
         )
         when (status) {
-            CapabilityStatus.PROVEN, CapabilityStatus.OBSERVED -> {
+            CapabilityStatus.PROVEN -> {
+                DevPodsChip(text = "Proven", style = ChipStyle.Success, showDot = false)
+            }
+            CapabilityStatus.FALLBACK_PROVEN -> {
+                DevPodsChip(text = "Works through Android controls", style = ChipStyle.Warning, showDot = false)
+            }
+            CapabilityStatus.OBSERVED -> {
                 DevPodsChip(text = "Observed", style = ChipStyle.Warning, showDot = false)
             }
             CapabilityStatus.UNPROVEN -> {
@@ -471,6 +612,7 @@ private fun BridgeManagementCard(
                 text = "Paired bridge",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -520,6 +662,7 @@ private fun BridgeManagementCard(
                 text = "Pairing issue",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -597,6 +740,7 @@ private fun ListeningFallbacksCard(
             text = "Listening fallbacks",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
@@ -638,7 +782,8 @@ private fun ToggleRow(
             .fillMaxWidth()
             .clickable(onClick = onToggle)
             .heightIn(min = 52.dp)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 10.dp)
+            .semantics { contentDescription = "$label, toggle ${if (enabled) "on" else "off"}" },
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -691,6 +836,7 @@ private fun ProviderStatusCard(
             text = "Earbud providers",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(8.dp))
         if (providerHealth.isEmpty()) {
@@ -772,6 +918,7 @@ private fun SpeechAndOutputCard(
             text = "Speech and output",
             style = MaterialTheme.typography.titleMedium,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(

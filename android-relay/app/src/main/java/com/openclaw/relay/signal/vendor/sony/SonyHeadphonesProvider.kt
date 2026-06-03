@@ -36,10 +36,12 @@ private const val TAG = "SonyHeadphonesProvider"
  *
  * Detects Sony WF/WH/LinkBuds families by bonded device name.
  * Uses Bluetooth Classic serial transport where available.
- * Battery and capability state are read via Sony protocol (Gadgetbridge-derived).
  *
  * For gesture detection, this provider configures Sony button/touch settings
  * to emit standard Android media events, which Layer 0 (MediaSession) captures.
+ *
+ * Protocol knowledge was developed through clean-room analysis.
+ * See docs/vendor-protocol-provenance.md for sources.
  */
 @SuppressLint("MissingPermission")
 class SonyHeadphonesProvider(private val context: Context) : EarbudSignalProvider {

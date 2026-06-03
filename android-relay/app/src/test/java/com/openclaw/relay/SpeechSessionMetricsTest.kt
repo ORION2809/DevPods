@@ -43,6 +43,7 @@ class SpeechSessionMetricsTest {
         assertEquals("left_double_tap", metrics.wakeSignal)
         assertEquals(70L, metrics.routeSettleMs)
         assertEquals(2, metrics.rmsFrameCount)
+        assertEquals(2, metrics.rmsFramesAboveNoiseFloor)
         assertEquals(-2f, metrics.rmsPeakDb)
         assertEquals(2, metrics.partialCount)
         assertEquals(SpeechEndpointReason.FINAL, metrics.endpointReason)
@@ -85,6 +86,28 @@ class SpeechSessionMetricsTest {
     }
 
     @Test
+    fun `rmsFramesAboveNoiseFloor counts only frames above noise floor`() {
+        val recorder = SpeechSessionMetricsRecorder(
+            sessionId = "speech-rms",
+            engineId = "platform_speech_recognizer",
+            startedAtMs = 1_000L,
+        )
+
+        recorder.markRmsChanged(1_100L, -50f)
+        recorder.markRmsChanged(1_110L, -40f)
+        recorder.markRmsChanged(1_120L, -46f)
+        recorder.markRmsChanged(1_130L, -30f)
+
+        val metrics = recorder.snapshot()
+        assertEquals(4, metrics.rmsFrameCount)
+        assertEquals(2, metrics.rmsFramesAboveNoiseFloor)
+        assertEquals(-30f, metrics.rmsPeakDb)
+
+        val observation = metrics.toPlatformVadObservation()
+        assertEquals(2, observation.rmsFramesAboveNoiseFloor)
+    }
+
+    @Test
     fun `error endpoint records code and reset class`() {
         val recorder = SpeechSessionMetricsRecorder(
             sessionId = "speech-3",
@@ -103,5 +126,48 @@ class SpeechSessionMetricsTest {
         assertEquals(8, metrics.errorCode)
         assertEquals(SpeechEndpointReason.RECOGNIZER_BUSY, metrics.endpointReason)
         assertEquals(300L, metrics.totalSessionMs)
+    }
+
+    @Test
+    fun `recorder starts in routing state and transitions through lifecycle`() {
+        val recorder = SpeechSessionMetricsRecorder(
+            sessionId = "speech-state",
+            engineId = "platform_speech_recognizer",
+            startedAtMs = 1_000L,
+        )
+
+        assertEquals(SpeechSessionState.ROUTING, recorder.snapshot().sessionState)
+
+        recorder.markRouteRequested(1_010L)
+        recorder.markRouteReady(1_080L, RelayAudioRouteSnapshot(isActive = true))
+        assertEquals(SpeechSessionState.ROUTING, recorder.snapshot().sessionState)
+
+        recorder.markState(SpeechSessionState.LISTENING)
+        assertEquals(SpeechSessionState.LISTENING, recorder.snapshot().sessionState)
+
+        recorder.markFinal(1_500L, "hello")
+        recorder.markState(SpeechSessionState.FINALIZING)
+        assertEquals(SpeechSessionState.FINALIZING, recorder.snapshot().sessionState)
+    }
+
+    @Test
+    fun `failed state is recorded on error`() {
+        val recorder = SpeechSessionMetricsRecorder(
+            sessionId = "speech-fail",
+            engineId = "platform_speech_recognizer",
+            startedAtMs = 1_000L,
+        )
+
+        recorder.markState(SpeechSessionState.LISTENING)
+        recorder.markError(
+            nowMs = 1_200L,
+            errorCode = 7,
+            reason = SpeechEndpointReason.NO_SPEECH,
+        )
+        recorder.markState(SpeechSessionState.FAILED)
+
+        val metrics = recorder.snapshot()
+        assertEquals(SpeechSessionState.FAILED, metrics.sessionState)
+        assertEquals(SpeechEndpointReason.NO_SPEECH, metrics.endpointReason)
     }
 }

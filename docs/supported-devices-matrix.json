@@ -1,35 +1,43 @@
 {
-  "version": "2026-05-13",
+  "version": "2026-05-19",
+  "statusDefinitions": {
+    "proven": "20-session physical proof passed on a named phone and Android version",
+    "observed": "Device detected and at least one real signal or state was observed, but full proof did not pass",
+    "fallback_proven": "Vendor protocol is not proven, but Android MediaSession or assistant path passed",
+    "implemented_unverified": "Code exists but no physical device proof",
+    "scaffolded": "Detection or transport exists, but rich behavior is not implemented or validated",
+    "unsupported": "Tested and failed, or platform blocks required path"
+  },
   "providers": [
     {
       "providerId": "apple_airpods",
       "providerLabel": "Apple AirPods / Beats",
       "brands": ["Apple", "Beats"],
       "models": [
-        {"name": "AirPods (Gen 1)", "modelNumbers": ["A1523", "A1722"], "status": "code_complete"},
-        {"name": "AirPods (Gen 2)", "modelNumbers": ["A2031", "A2032"], "status": "code_complete"},
-        {"name": "AirPods (Gen 3)", "modelNumbers": ["A2564", "A2565"], "status": "code_complete"},
-        {"name": "AirPods (Gen 4)", "modelNumbers": ["A3050", "A3053", "A3054"], "status": "code_complete"},
-        {"name": "AirPods (Gen 4 ANC)", "modelNumbers": ["A3055", "A3056", "A3057"], "status": "code_complete"},
-        {"name": "AirPods Pro", "modelNumbers": ["A2083", "A2084"], "status": "code_complete"},
-        {"name": "AirPods Pro 2", "modelNumbers": ["A2698", "A2699", "A2931"], "status": "code_complete"},
-        {"name": "AirPods Pro 2 USB-C", "modelNumbers": ["A3047", "A3048", "A3049"], "status": "code_complete"},
-        {"name": "AirPods Pro 3", "modelNumbers": ["A3063", "A3064", "A3065"], "status": "code_complete"},
-        {"name": "AirPods Max", "modelNumbers": ["A2096"], "status": "code_complete"},
-        {"name": "AirPods Max USB-C", "modelNumbers": ["A3184"], "status": "code_complete"},
-        {"name": "Beats Solo 3", "modelNumbers": ["A1796"], "status": "code_complete"},
-        {"name": "Beats Studio 3", "modelNumbers": ["A1914"], "status": "code_complete"},
-        {"name": "Beats Flex", "modelNumbers": ["A2295"], "status": "code_complete"},
-        {"name": "Powerbeats Pro", "modelNumbers": ["A2047", "A2048", "A2453", "A2454"], "status": "code_complete"},
-        {"name": "Beats Fit Pro", "modelNumbers": ["A2576", "A2577", "A2578"], "status": "code_complete"},
-        {"name": "Beats Studio Buds+", "modelNumbers": ["A2871", "A2872", "A2952"], "status": "code_complete"}
+        {"name": "AirPods (Gen 1)", "modelNumbers": ["A1523", "A1722"], "status": "implemented_unverified"},
+        {"name": "AirPods (Gen 2)", "modelNumbers": ["A2031", "A2032"], "status": "implemented_unverified"},
+        {"name": "AirPods (Gen 3)", "modelNumbers": ["A2564", "A2565"], "status": "implemented_unverified"},
+        {"name": "AirPods (Gen 4)", "modelNumbers": ["A3050", "A3053", "A3054"], "status": "implemented_unverified"},
+        {"name": "AirPods (Gen 4 ANC)", "modelNumbers": ["A3055", "A3056", "A3057"], "status": "implemented_unverified"},
+        {"name": "AirPods Pro", "modelNumbers": ["A2083", "A2084"], "status": "implemented_unverified"},
+        {"name": "AirPods Pro 2", "modelNumbers": ["A2698", "A2699", "A2931"], "status": "implemented_unverified"},
+        {"name": "AirPods Pro 2 USB-C", "modelNumbers": ["A3047", "A3048", "A3049"], "status": "implemented_unverified"},
+        {"name": "AirPods Pro 3", "modelNumbers": ["A3063", "A3064", "A3065"], "status": "implemented_unverified"},
+        {"name": "AirPods Max", "modelNumbers": ["A2096"], "status": "implemented_unverified"},
+        {"name": "AirPods Max USB-C", "modelNumbers": ["A3184"], "status": "implemented_unverified"},
+        {"name": "Beats Solo 3", "modelNumbers": ["A1796"], "status": "implemented_unverified"},
+        {"name": "Beats Studio 3", "modelNumbers": ["A1914"], "status": "implemented_unverified"},
+        {"name": "Beats Flex", "modelNumbers": ["A2295"], "status": "implemented_unverified"},
+        {"name": "Powerbeats Pro", "modelNumbers": ["A2047", "A2048", "A2453", "A2454"], "status": "implemented_unverified"},
+        {"name": "Beats Fit Pro", "modelNumbers": ["A2576", "A2577", "A2578"], "status": "implemented_unverified"},
+        {"name": "Beats Studio Buds+", "modelNumbers": ["A2871", "A2872", "A2952"], "status": "implemented_unverified"}
       ],
       "features": {
-        "battery": ["left", "right", "case"],
-        "earDetection": true,
-        "ancControl": true,
-        "stemPressEvents": true,
-        "mediaSessionFallback": true
+        "battery": "implemented_unverified",
+        "earDetection": "implemented_unverified",
+        "ancControl": "implemented_unverified",
+        "stemPressEvents": "implemented_unverified",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
@@ -37,20 +45,20 @@
       "providerLabel": "Samsung Galaxy Buds",
       "brands": ["Samsung"],
       "models": [
-        {"name": "Galaxy Buds", "modelNumbers": ["SM-R170"], "status": "code_complete"},
-        {"name": "Galaxy Buds Live", "modelNumbers": ["SM-R180"], "status": "code_complete"},
-        {"name": "Galaxy Buds Pro", "modelNumbers": ["SM-R190"], "status": "code_complete"},
-        {"name": "Galaxy Buds2", "modelNumbers": ["SM-R177"], "status": "code_complete"},
-        {"name": "Galaxy Buds2 Pro", "modelNumbers": ["SM-R510"], "status": "code_complete"},
-        {"name": "Galaxy Buds FE", "modelNumbers": ["SM-R400"], "status": "code_complete"},
-        {"name": "Galaxy Buds3 Pro", "modelNumbers": ["SM-R630"], "status": "code_complete"}
+        {"name": "Galaxy Buds", "modelNumbers": ["SM-R170"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds Live", "modelNumbers": ["SM-R180"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds Pro", "modelNumbers": ["SM-R190"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds2", "modelNumbers": ["SM-R177"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds2 Pro", "modelNumbers": ["SM-R510"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds FE", "modelNumbers": ["SM-R400"], "status": "implemented_unverified"},
+        {"name": "Galaxy Buds3 Pro", "modelNumbers": ["SM-R630"], "status": "implemented_unverified"}
       ],
       "features": {
-        "battery": ["left", "right", "case"],
-        "earDetection": false,
-        "ancControl": true,
-        "touchConfiguration": true,
-        "mediaSessionFallback": true
+        "battery": "implemented_unverified",
+        "earDetection": "unsupported",
+        "ancControl": "implemented_unverified",
+        "touchConfiguration": "scaffolded",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
@@ -66,10 +74,10 @@
         {"name": "LinkBuds S", "status": "scaffolded"}
       ],
       "features": {
-        "battery": ["single"],
-        "earDetection": false,
-        "ancControl": true,
-        "mediaSessionFallback": true
+        "battery": "scaffolded",
+        "earDetection": "unsupported",
+        "ancControl": "scaffolded",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
@@ -83,8 +91,8 @@
         {"name": "CMF Buds", "status": "scaffolded"}
       ],
       "features": {
-        "battery": ["left", "right", "case"],
-        "mediaSessionFallback": true
+        "battery": "scaffolded",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
@@ -97,31 +105,31 @@
         {"name": "OnePlus Buds series", "status": "scaffolded"}
       ],
       "features": {
-        "battery": ["left", "right", "case"],
-        "mediaSessionFallback": true
+        "battery": "scaffolded",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
       "providerId": "generic_bluetooth_headset",
       "providerLabel": "Generic Bluetooth Headset",
       "brands": ["Universal"],
-      "models": [{"name": "Any Bluetooth audio device", "status": "validated"}],
+      "models": [{"name": "Any Bluetooth audio device", "status": "fallback_proven"}],
       "features": {
-        "connectionDetection": true,
-        "audioRouteControl": true,
-        "mediaSessionFallback": true
+        "connectionDetection": "fallback_proven",
+        "audioRouteControl": "fallback_proven",
+        "mediaSessionFallback": "fallback_proven"
       }
     },
     {
       "providerId": "android_media_session",
       "providerLabel": "Android Media Controls",
       "brands": ["Universal"],
-      "models": [{"name": "All Android-recognized headsets", "status": "validated"}],
+      "models": [{"name": "All Android-recognized headsets", "status": "fallback_proven"}],
       "features": {
-        "wakeSinglePress": true,
-        "wakeLongPress": true,
-        "interruptDoublePress": true,
-        "approveTriplePress": true
+        "wakeSinglePress": "fallback_proven",
+        "wakeLongPress": "fallback_proven",
+        "interruptDoublePress": "fallback_proven",
+        "approveTriplePress": "fallback_proven"
       }
     }
   ],

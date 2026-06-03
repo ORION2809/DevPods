@@ -15,6 +15,8 @@ enum class ActivityEventType {
     DISCARDED,
     SETUP_COMPLETED,
     ERROR,
+    ROUTE_SETTLED,
+    WRONG_MIC_SUSPECTED,
 }
 
 @Serializable

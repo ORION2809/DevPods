@@ -84,6 +84,7 @@ describe('bridge autonomy workflow', () => {
       event: 'android_autonomy_interrupt',
       timestamp: Date.now(),
       utterance: 'what branch am i on',
+      idempotencyKey: 'sess_plan-android_autonomy_interrupt-interrupt-' + Date.now(),
     });
 
     expect(planned.status).toBe('acknowledged');
@@ -97,6 +98,7 @@ describe('bridge autonomy workflow', () => {
       device: 'both_buds',
       event: 'android_autonomy_continue',
       timestamp: Date.now(),
+      idempotencyKey: 'sess_plan-android_autonomy_continue-autonomy-' + Date.now(),
     });
 
     expect(continued.status).toBe('completed');
@@ -200,6 +202,7 @@ describe('bridge autonomy workflow', () => {
       event: 'android_push_to_talk',
       timestamp: Date.now(),
       utterance: 'run the tests',
+      idempotencyKey: 'sess_cancel_running-android_push_to_talk-none-' + Date.now(),
     });
     const started = await runtime.handleEvent({
       source: 'android_relay',
@@ -209,6 +212,7 @@ describe('bridge autonomy workflow', () => {
       event: 'android_approve',
       timestamp: Date.now(),
       pendingActionId: approvalPrompt.actionId ?? undefined,
+      idempotencyKey: 'sess_cancel_running-android_approve-' + (approvalPrompt.actionId ?? 'none') + '-' + Date.now(),
     });
 
     expect(started.status).toBe('running');
@@ -221,6 +225,7 @@ describe('bridge autonomy workflow', () => {
       event: 'android_cancel',
       timestamp: Date.now(),
       pendingActionId: approvalPrompt.actionId ?? undefined,
+      idempotencyKey: 'sess_cancel_running-android_cancel-' + (approvalPrompt.actionId ?? 'none') + '-' + Date.now(),
     });
 
     expect(cancelled.status).toBe('cancelled');

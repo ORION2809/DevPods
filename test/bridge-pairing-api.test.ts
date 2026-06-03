@@ -77,9 +77,11 @@ describe('bridge pairing api', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');
     expect(body).toContain('DevPods Relay Pairing');
+    expect(body).toContain('DevPods wordmark');
     expect(body).toContain('Scan from DevPods Relay');
     expect(body).toContain('data-pairing-qr-value="https://bridge.example.test/relay/pairing"');
     expect(body).toContain('data:image/svg+xml');
+    expect(body).toContain('data:image/png;base64');
     expect(body).toContain('devpods://pair?bridgeBaseUrl=https%3A%2F%2Fbridge.example.test%2Frelay&amp;workspace=current_repo');
     expect(body).toContain('Open DevPods Relay');
     expect(body).not.toContain('Relay token');

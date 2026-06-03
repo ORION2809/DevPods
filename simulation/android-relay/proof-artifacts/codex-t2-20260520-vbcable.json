@@ -1,0 +1,18 @@
+﻿{
+    "artifactId": "codex-t2-20260520-vbcable",
+    "proofTier": "T2_EMULATOR_HOST_AUDIO",
+    "timestamp": 1779271445019,
+    "status": "FAILED",
+    "hasBlockingFailures": true,
+    "failureReasons": [
+        "route_failed",
+        "stt_failed",
+        "interruption_target_missed"
+    ],
+    "successfulSessionCount": 0,
+    "targetSessionCount": 5,
+    "interruptionTargetMetCount": 0,
+    "routeSuccessCount": 1,
+    "sttSuccessCount": 0,
+    "appVersion": "1.0.0"
+}

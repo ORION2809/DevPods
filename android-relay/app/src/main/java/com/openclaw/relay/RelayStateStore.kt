@@ -6,9 +6,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 object RelayStateStore {
+    const val RECALIBRATION_MISS_THRESHOLD = 5
+
     private val mutableState = MutableStateFlow(RelayUiState())
 
     val state: StateFlow<RelayUiState> = mutableState.asStateFlow()
+
+    private val voiceDiagnosticsStore = VoiceDiagnosticsStore()
+    private val vadTelemetry = VadTelemetry()
+
+    fun voiceDiagnosticsStore(): VoiceDiagnosticsStore = voiceDiagnosticsStore
+    fun vadTelemetry(): VadTelemetry = vadTelemetry
 
     fun updateConfig(transform: (RelayConfig) -> RelayConfig) {
         mutableState.update { current ->
@@ -102,6 +110,8 @@ object RelayStateStore {
                     lastTtsError = null,
                 )
             } else {
+                voiceDiagnosticsStore.clear()
+                vadTelemetry.clear()
                 it.copy(
                     isServiceRunning = false,
                     isListening = false,
@@ -124,6 +134,10 @@ object RelayStateStore {
 
     fun markListening(isListening: Boolean) {
         mutableState.update { it.copy(isListening = isListening) }
+    }
+
+    fun setSpeechSessionState(state: SpeechSessionState) {
+        mutableState.update { it.copy(speechSessionState = state) }
     }
 
     fun markAwaitingBridgeResponse(isAwaiting: Boolean) {
@@ -160,6 +174,10 @@ object RelayStateStore {
         mutableState.update { it.copy(speechRecognitionAvailable = isAvailable) }
     }
 
+    fun setCurrentSpeechEngineId(engineId: String?) {
+        mutableState.update { it.copy(currentSpeechEngineId = engineId) }
+    }
+
     fun setTtsReady(isReady: Boolean) {
         mutableState.update { it.copy(ttsReady = isReady) }
     }
@@ -179,6 +197,8 @@ object RelayStateStore {
                 ),
             )
         }
+        voiceDiagnosticsStore.recordSpeechSession(metrics)
+        vadTelemetry.record(metrics.toPlatformVadObservation())
     }
 
     fun recordTtsPlaybackMetrics(metrics: TtsPlaybackMetrics) {
@@ -189,6 +209,7 @@ object RelayStateStore {
                 ),
             )
         }
+        voiceDiagnosticsStore.recordTtsPlayback(metrics)
     }
 
     fun recordTtsInterruptionMetrics(metrics: TtsInterruptionMetrics) {
@@ -201,6 +222,7 @@ object RelayStateStore {
                 ),
             )
         }
+        voiceDiagnosticsStore.recordTtsInterruption(metrics)
     }
 
     fun recordAudioProbeMetrics(metrics: AudioProbeMetrics) {
@@ -213,6 +235,7 @@ object RelayStateStore {
                 ),
             )
         }
+        voiceDiagnosticsStore.recordAudioProbe(metrics)
     }
 
     fun recordOfflineSpeechReadiness(readiness: OfflineSpeechReadiness) {
@@ -303,6 +326,10 @@ object RelayStateStore {
                 ),
             )
         }
+    }
+
+    fun voiceDiagnosticsExportSummary(): VoiceDiagnosticsExportSummary {
+        return voiceDiagnosticsStore.exportSummary()
     }
 
     fun setPartialTranscript(value: String) {
@@ -468,7 +495,7 @@ object RelayStateStore {
         mutableState.update {
             it.copy(
                 setupPhase = phase,
-                showSetupWizard = phase != SetupPhase.NOT_STARTED && phase != SetupPhase.COMPLETE,
+                showSetupWizard = phase != SetupPhase.NOT_STARTED && phase != SetupPhase.COMPLETE_PROVEN && phase != SetupPhase.COMPLETE_DEGRADED,
                 setupTestState = SetupTestState(),
             )
         }
@@ -531,6 +558,298 @@ object RelayStateStore {
                     autonomyContinueAtMs = state.countdownMs?.let { ms -> System.currentTimeMillis() + ms }
                 ),
             )
+        }
+    }
+
+    // --- Calibration state ---
+
+    fun setCalibrationProfile(profile: com.openclaw.relay.calibration.EarbudCalibrationProfile?) {
+        mutableState.update {
+            it.copy(
+                calibrationProfile = profile,
+                calibrationRequired = profile == null || !profile.isReadyForRuntime(),
+            )
+        }
+    }
+
+    fun setGestureActionMap(map: com.openclaw.relay.calibration.GestureActionMap) {
+        mutableState.update {
+            val currentProfile = it.calibrationProfile
+            if (currentProfile != null) {
+                val updatedProfile = currentProfile.copy(
+                    gestureActionMap = map,
+                )
+                it.copy(
+                    calibrationProfile = updatedProfile,
+                )
+            } else {
+                it
+            }
+        }
+    }
+
+    fun setCalibrationSession(session: com.openclaw.relay.calibration.CalibrationSessionState?) {
+        mutableState.update {
+            it.copy(calibrationSession = session)
+        }
+    }
+
+    fun setCalibrationRequired(required: Boolean) {
+        mutableState.update {
+            it.copy(calibrationRequired = required)
+        }
+    }
+
+    fun clearCalibration() {
+        mutableState.update {
+            it.copy(
+                calibrationProfile = null,
+                calibrationSession = null,
+                calibrationRequired = true,
+                recentUnmatchedSignals = emptyList(),
+                runtimeMissCount = 0,
+                recentMatchedSignals = emptyList(),
+            )
+        }
+    }
+
+    fun setRuntimeMissCount(count: Int) {
+        mutableState.update {
+            it.copy(
+                runtimeMissCount = count,
+                calibrationRequired = if (count >= RECALIBRATION_MISS_THRESHOLD) true else it.calibrationRequired,
+            )
+        }
+    }
+
+    fun recordUnmatchedSignal(
+        providerId: String,
+        gestureType: String,
+        keyCode: String? = null,
+        reason: String,
+    ) {
+        mutableState.update {
+            val newRecord = com.openclaw.relay.UnmatchedSignalRecord(
+                providerId = providerId,
+                gestureType = gestureType,
+                keyCode = keyCode,
+                reason = reason,
+            )
+            val updatedSignals = (it.recentUnmatchedSignals + newRecord)
+                .takeLast(20)
+            val newMissCount = it.runtimeMissCount + 1
+            it.copy(
+                recentUnmatchedSignals = updatedSignals,
+                runtimeMissCount = newMissCount,
+                calibrationRequired = if (newMissCount >= RECALIBRATION_MISS_THRESHOLD) true else it.calibrationRequired,
+            )
+        }
+    }
+
+    fun recordMatchedSignal(
+        providerId: String,
+        gestureType: String,
+        action: String,
+    ) {
+        mutableState.update {
+            val newMissCount = maxOf(0, it.runtimeMissCount - 1)
+            val newRecord = com.openclaw.relay.MatchedSignalRecord(
+                providerId = providerId,
+                gestureType = gestureType,
+                action = action,
+            )
+            val updatedSignals = (it.recentMatchedSignals + newRecord)
+                .takeLast(20)
+            it.copy(
+                runtimeMissCount = newMissCount,
+                recentMatchedSignals = updatedSignals,
+                calibrationRequired = if (newMissCount < RECALIBRATION_MISS_THRESHOLD) false else it.calibrationRequired,
+            )
+        }
+    }
+
+    fun setOutboxEvents(events: List<com.openclaw.relay.BridgeOutboxEvent>, cursor: String) {
+        mutableState.update {
+            it.copy(
+                outboxEvents = events,
+                outboxCursor = cursor,
+                outboxBadgeCount = events.size,
+            )
+        }
+    }
+
+    fun clearOutboxBadge() {
+        mutableState.update {
+            it.copy(outboxBadgeCount = 0)
+        }
+    }
+
+    fun removeOutboxEvent(eventId: String) {
+        mutableState.update {
+            it.copy(
+                outboxEvents = it.outboxEvents.filter { e -> e.id != eventId },
+                outboxBadgeCount = maxOf(0, it.outboxBadgeCount - 1),
+            )
+        }
+    }
+
+    fun setNotificationPreference(preference: NotificationPreference) {
+        mutableState.update {
+            it.copy(notificationPreference = preference)
+        }
+    }
+
+    fun getNotificationPreference(): NotificationPreference {
+        return mutableState.value.notificationPreference
+            ?: NotificationPreference(sessionId = mutableState.value.config.sessionId)
+    }
+
+    fun setReminders(reminders: List<Reminder>) {
+        mutableState.update {
+            it.copy(reminders = reminders)
+        }
+    }
+
+    fun addReminder(reminder: Reminder) {
+        mutableState.update {
+            it.copy(reminders = it.reminders + reminder)
+        }
+    }
+
+    fun removeReminder(reminderId: String) {
+        mutableState.update {
+            it.copy(reminders = it.reminders.filter { r -> r.id != reminderId })
+        }
+    }
+
+    fun setActiveLearningPrompt(prompt: BridgeOutboxEvent?) {
+        mutableState.update {
+            it.copy(activeLearningPrompt = prompt)
+        }
+    }
+
+    fun clearLearningPrompt() {
+        mutableState.update {
+            it.copy(activeLearningPrompt = null)
+        }
+    }
+
+    fun setDiscoveredBridges(bridges: List<DiscoveredBridge>) {
+        mutableState.update {
+            it.copy(discoveredBridges = bridges)
+        }
+    }
+
+    fun setIsDiscovering(discovering: Boolean) {
+        mutableState.update {
+            it.copy(isDiscovering = discovering)
+        }
+    }
+
+    fun setQuickStartEnabled(enabled: Boolean) {
+        mutableState.update {
+            it.copy(quickStartEnabled = enabled)
+        }
+    }
+
+    fun setNudgePolicy(policy: NudgePolicy) {
+        mutableState.update {
+            it.copy(nudgePolicy = policy)
+        }
+    }
+
+    fun setLearnedPhrases(phrases: List<LearnedPhrase>) {
+        mutableState.update {
+            it.copy(learnedPhrases = phrases)
+        }
+    }
+
+    fun removeLearnedPhrase(phrase: String) {
+        mutableState.update {
+            it.copy(learnedPhrases = it.learnedPhrases.filter { p -> p.phrase != phrase })
+        }
+    }
+
+    // --- Sherpa benchmark state ---
+
+    fun recordSherpaBenchmarkReport(report: SherpaCommandBenchmarkReport) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    sherpaBenchmarkReport = report,
+                    sherpaPromotionState = report.promotionState,
+                ),
+            )
+        }
+    }
+
+    fun setSherpaPromotionState(state: SherpaPromotionState) {
+        mutableState.update {
+            it.copy(
+                voiceDiagnostics = it.voiceDiagnostics.copy(
+                    sherpaPromotionState = state,
+                ),
+            )
+        }
+    }
+
+    fun startBenchmarkSession(totalCommands: Int, firstCommand: String, engine: CommandBenchmarkEngine) {
+        mutableState.update {
+            it.copy(
+                benchmarkSession = SherpaBenchmarkUiState(
+                    isRunning = true,
+                    currentCommandIndex = 0,
+                    totalCommands = totalCommands,
+                    currentCommand = firstCommand,
+                    currentEngine = engine,
+                    statusLabel = "Speak the command",
+                ),
+            )
+        }
+    }
+
+    fun advanceBenchmarkCommand(index: Int, command: String, engine: CommandBenchmarkEngine, samplesCollected: Int) {
+        mutableState.update {
+            it.copy(
+                benchmarkSession = it.benchmarkSession?.copy(
+                    currentCommandIndex = index,
+                    currentCommand = command,
+                    currentEngine = engine,
+                    samplesCollected = samplesCollected,
+                    lastTranscript = "",
+                    statusLabel = "Speak the command",
+                ),
+            )
+        }
+    }
+
+    fun recordBenchmarkTranscript(transcript: String, latencyMs: Long?) {
+        mutableState.update {
+            it.copy(
+                benchmarkSession = it.benchmarkSession?.copy(
+                    lastTranscript = transcript,
+                    lastSampleLatencyMs = latencyMs,
+                    statusLabel = if (transcript.isNotBlank()) "Sample recorded" else "No speech detected",
+                ),
+            )
+        }
+    }
+
+    fun finishBenchmarkSession() {
+        mutableState.update {
+            it.copy(benchmarkSession = null)
+        }
+    }
+
+    fun recordBenchmarkSample(sample: CommandBenchmarkSample) {
+        mutableState.update {
+            it.copy(lastBenchmarkSample = sample)
+        }
+    }
+
+    fun clearBenchmarkSample() {
+        mutableState.update {
+            it.copy(lastBenchmarkSample = null)
         }
     }
 }

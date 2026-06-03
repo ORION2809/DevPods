@@ -13,13 +13,19 @@ data class VoiceProofRunSession(
     val capturedAtMs: Long,
     val endpointReason: SpeechEndpointReason,
     val routeState: AudioRouteProofState,
+    val routeSelectedDeviceType: String? = null,
     val routeSettleMs: Long? = null,
+    val durationMs: Long? = null,
     val speechDetected: Boolean = false,
     val wrongMicSuspected: Boolean = false,
     val finalTranscriptLength: Int = 0,
     val rmsFrameCount: Int = 0,
     val rmsPeakDb: Float? = null,
+    val rmsFramesAboveNoiseFloor: Int = 0,
     val ttsStopLatencyMs: Long? = null,
+    val calibrationProfileId: String? = null,
+    val calibratedGestureUsed: String? = null,
+    val matchedCalibratedAction: String? = null,
 ) {
     val isCompleted: Boolean
         get() = endpointReason != SpeechEndpointReason.LISTENING
@@ -48,6 +54,7 @@ data class VoiceProofRunSummary(
     val audioProbeSuccessCount: Int = 0,
     val reliabilityPercent: Int = 0,
     val failureReasons: List<String> = emptyList(),
+    val hasBlockingFailures: Boolean = false,
 )
 
 data class VoiceProofRun(
@@ -133,13 +140,19 @@ fun SpeechSessionMetrics.toVoiceProofRunSession(): VoiceProofRunSession {
             .maxOrNull() ?: startedAtMs,
         endpointReason = endpointReason,
         routeState = routeProof.routeState,
+        routeSelectedDeviceType = routeProof.selectedDeviceType,
         routeSettleMs = routeSettleMs,
+        durationMs = totalSessionMs,
         speechDetected = vad.speechDetected,
         wrongMicSuspected = vad.wrongMicSuspected,
         finalTranscriptLength = finalTranscriptLength,
         rmsFrameCount = rmsFrameCount,
         rmsPeakDb = rmsPeakDb,
+        rmsFramesAboveNoiseFloor = rmsFramesAboveNoiseFloor,
         ttsStopLatencyMs = null,
+        calibrationProfileId = calibrationProfileId,
+        calibratedGestureUsed = calibratedGestureUsed,
+        matchedCalibratedAction = matchedCalibratedAction,
     )
 }
 
@@ -176,6 +189,17 @@ private fun summarizeVoiceProofRun(
         if (lastAudioProbe != null && lastAudioProbe.initStatus != AudioProbeInitStatus.STARTED) {
             add("audio_probe_${lastAudioProbe.initStatus.name.lowercase()}")
         }
+        if (lastAudioProbe != null && lastAudioProbe.initStatus == AudioProbeInitStatus.STARTED) {
+            if (lastAudioProbe.nonZeroFrameRatio == 0f) {
+                add("audio_probe_no_signal")
+            }
+            if (lastAudioProbe.readErrorCount > 0) {
+                add("audio_probe_read_failed")
+            }
+        }
+        if (ttsInterruptions.any { !it.targetMet }) {
+            add("interruption_target_missed")
+        }
     }.toList()
 
     return VoiceProofRunSummary(
@@ -195,5 +219,6 @@ private fun summarizeVoiceProofRun(
             (completed.count { it.sessionSucceeded } * 100) / targetSessionCount
         },
         failureReasons = failureReasons,
+        hasBlockingFailures = failureReasons.isNotEmpty(),
     )
 }

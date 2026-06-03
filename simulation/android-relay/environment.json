@@ -1,0 +1,29 @@
+﻿{
+    "machine":  "DESKTOP-3D68URG",
+    "capabilities":  [
+                         "T1",
+                         "T2"
+                     ],
+    "timestamp":  "2026-05-20T11:04:39.8728799+00:00",
+    "physicalDevice":  {
+                           "connected":  false
+                       },
+    "tier":  "T2_EMULATOR_HOST_AUDIO",
+    "avd":  {
+                "apiLevel":  35,
+                "booted":  true,
+                "available":  true
+            },
+    "hostAudio":  {
+                      "playbackEndpoints":  [
+                                                "Speakers (VB-Audio Virtual Cable)"
+                                            ],
+                      "soundDevices":  [
+                                           "VB-Audio Virtual Cable"
+                                       ],
+                      "loopbackAvailable":  true,
+                      "recordingEndpoints":  [
+                                                 "CABLE Output (VB-Audio Virtual Cable)"
+                                             ]
+                  }
+}

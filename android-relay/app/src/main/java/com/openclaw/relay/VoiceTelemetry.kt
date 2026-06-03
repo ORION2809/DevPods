@@ -1,5 +1,16 @@
 package com.openclaw.relay
 
+enum class SpeechSessionState {
+    IDLE,
+    ROUTING,
+    LISTENING,
+    FINALIZING,
+    BRIDGE,
+    SPEAKING,
+    INTERRUPTED,
+    FAILED,
+}
+
 enum class SpeechEndpointReason {
     LISTENING,
     FINAL,
@@ -21,6 +32,10 @@ data class SpeechSessionMetrics(
     val engineId: String,
     val startedAtMs: Long,
     val wakeSignal: String? = null,
+    val calibrationProfileId: String? = null,
+    val calibratedGestureUsed: String? = null,
+    val matchedCalibratedAction: String? = null,
+    val sessionState: SpeechSessionState = SpeechSessionState.IDLE,
     val routeRequestedAtMs: Long? = null,
     val routeReadyAtMs: Long? = null,
     val routeProof: AudioRouteProof = AudioRouteProof(),
@@ -30,6 +45,7 @@ data class SpeechSessionMetrics(
     val beginSpeechAtMs: Long? = null,
     val firstRmsAtMs: Long? = null,
     val rmsFrameCount: Int = 0,
+    val rmsFramesAboveNoiseFloor: Int = 0,
     val rmsPeakDb: Float? = null,
     val endSpeechAtMs: Long? = null,
     val firstPartialAtMs: Long? = null,
@@ -44,6 +60,11 @@ data class SpeechSessionMetrics(
     val ttsDoneAtMs: Long? = null,
     val interruptedAtMs: Long? = null,
     val privacyLevel: String = "no_raw_audio_no_transcript",
+    // End-to-end latency summary fields (Workstream 0)
+    val gestureReceivedAtMs: Long? = null,
+    val bridgeRequestSentAtMs: Long? = null,
+    val bridgeResponseReceivedAtMs: Long? = null,
+    val ttsRequestedAtMs: Long? = null,
 ) {
     val routeSettleMs: Long?
         get() = routeRequestedAtMs?.let { requested ->
@@ -64,12 +85,41 @@ data class SpeechSessionMetrics(
 
     val totalSessionMs: Long?
         get() = listOfNotNull(finalAtMs, errorAtMs, interruptedAtMs, ttsDoneAtMs).maxOrNull()?.let { it - startedAtMs }
+
+    // Workstream 0: E2E latency summaries
+    val gestureReceivedToRouteRequestedMs: Long?
+        get() = gestureReceivedAtMs?.let { g -> routeRequestedAtMs?.let { r -> (r - g).coerceAtLeast(0L) } }
+
+    val routeRequestedToRouteReadyMs: Long?
+        get() = routeRequestedAtMs?.let { req -> routeReadyAtMs?.let { ready -> (ready - req).coerceAtLeast(0L) } }
+
+    val gestureReceivedToListeningStartedMs: Long?
+        get() = gestureReceivedAtMs?.let { g -> listeningStartedAtMs?.let { l -> (l - g).coerceAtLeast(0L) } }
+
+    val recognizerCreateMs: Long?
+        get() = recognizerCreatedAtMs?.let { created -> listeningStartedAtMs?.let { started -> (created - started).coerceAtLeast(0L) } }
+
+    val listeningStartedToReadyMs: Long?
+        get() = listeningStartedAtMs?.let { l -> readyForSpeechAtMs?.let { r -> (r - l).coerceAtLeast(0L) } }
+
+    val finalTranscriptToBridgeRequestMs: Long?
+        get() = finalAtMs?.let { f -> bridgeRequestSentAtMs?.let { b -> (b - f).coerceAtLeast(0L) } }
+
+    val bridgeRequestDurationMs: Long?
+        get() = bridgeRequestSentAtMs?.let { req -> bridgeResponseReceivedAtMs?.let { resp -> (resp - req).coerceAtLeast(0L) } }
+
+    val bridgeResponseToTtsRequestedMs: Long?
+        get() = bridgeResponseReceivedAtMs?.let { resp -> ttsRequestedAtMs?.let { tts -> (tts - resp).coerceAtLeast(0L) } }
+
+    val ttsRequestToStartMs: Long?
+        get() = ttsRequestedAtMs?.let { req -> ttsStartAtMs?.let { started -> (started - req).coerceAtLeast(0L) } }
 }
 
 data class PlatformVadObservation(
     val speechDetected: Boolean = false,
     val rmsPeakDb: Float? = null,
     val rmsFrameCount: Int = 0,
+    val rmsFramesAboveNoiseFloor: Int = 0,
     val speechStartDelayMs: Long? = null,
     val partialAfterSpeechStartMs: Long? = null,
     val speechEndDelayMs: Long? = null,
@@ -89,6 +139,8 @@ data class VoiceDiagnosticsSnapshot(
     val foregroundControls: ForegroundControlSnapshot = ForegroundControlSnapshot(),
     val foregroundService: RelayForegroundServiceSnapshot = RelayForegroundServiceSnapshot(),
     val voiceProofRun: VoiceProofRun = VoiceProofRun(),
+    val sherpaBenchmarkReport: SherpaCommandBenchmarkReport? = null,
+    val sherpaPromotionState: SherpaPromotionState = SherpaPromotionState.HIDDEN,
 )
 
 class SpeechSessionMetricsRecorder(
@@ -96,13 +148,28 @@ class SpeechSessionMetricsRecorder(
     engineId: String,
     startedAtMs: Long,
     wakeSignal: String? = null,
+    calibrationProfileId: String? = null,
+    calibratedGestureUsed: String? = null,
+    matchedCalibratedAction: String? = null,
 ) {
+    companion object {
+        private const val NOISE_FLOOR_DB = -45f
+    }
+
     private var metrics = SpeechSessionMetrics(
         sessionId = sessionId,
         engineId = engineId,
         startedAtMs = startedAtMs,
         wakeSignal = wakeSignal,
+        calibrationProfileId = calibrationProfileId,
+        calibratedGestureUsed = calibratedGestureUsed,
+        matchedCalibratedAction = matchedCalibratedAction,
+        sessionState = SpeechSessionState.ROUTING,
     )
+
+    fun markState(state: SpeechSessionState) {
+        metrics = metrics.copy(sessionState = state)
+    }
 
     fun markRouteRequested(nowMs: Long) {
         metrics = metrics.copy(routeRequestedAtMs = nowMs)
@@ -135,6 +202,8 @@ class SpeechSessionMetricsRecorder(
         metrics = metrics.copy(
             firstRmsAtMs = metrics.firstRmsAtMs ?: nowMs,
             rmsFrameCount = metrics.rmsFrameCount + 1,
+            rmsFramesAboveNoiseFloor = metrics.rmsFramesAboveNoiseFloor +
+                if (rmsDb > NOISE_FLOOR_DB) 1 else 0,
             rmsPeakDb = maxOf(metrics.rmsPeakDb ?: rmsDb, rmsDb),
         )
     }
@@ -187,6 +256,22 @@ class SpeechSessionMetricsRecorder(
         )
     }
 
+    fun markGestureReceived(nowMs: Long) {
+        metrics = metrics.copy(gestureReceivedAtMs = nowMs)
+    }
+
+    fun markBridgeRequestSent(nowMs: Long) {
+        metrics = metrics.copy(bridgeRequestSentAtMs = nowMs)
+    }
+
+    fun markBridgeResponseReceived(nowMs: Long) {
+        metrics = metrics.copy(bridgeResponseReceivedAtMs = nowMs)
+    }
+
+    fun markTtsRequested(nowMs: Long) {
+        metrics = metrics.copy(ttsRequestedAtMs = nowMs)
+    }
+
     fun snapshot(): SpeechSessionMetrics = metrics
 }
 
@@ -200,6 +285,7 @@ fun SpeechSessionMetrics.toPlatformVadObservation(): PlatformVadObservation {
         speechDetected = speechDetected,
         rmsPeakDb = rmsPeakDb,
         rmsFrameCount = rmsFrameCount,
+        rmsFramesAboveNoiseFloor = rmsFramesAboveNoiseFloor,
         speechStartDelayMs = readyToSpeechStartMs,
         partialAfterSpeechStartMs = speechStartToPartialMs,
         speechEndDelayMs = beginSpeechAtMs?.let { begin -> endSpeechAtMs?.let { it - begin } },
@@ -215,6 +301,10 @@ enum class TtsPlaybackEvent {
     DONE,
     STOPPED,
     ERROR,
+    WARMUP_REQUESTED,
+    WARMUP_STARTED,
+    WARMUP_ERROR,
+    WARMUP_DONE,
 }
 
 data class TtsPlaybackMetrics(
@@ -228,6 +318,11 @@ data class TtsPlaybackMetrics(
     val errorAtMs: Long? = null,
     val errorCode: Int? = null,
     val event: TtsPlaybackEvent = TtsPlaybackEvent.REQUESTED,
+    val focusRequestedAtMs: Long? = null,
+    val focusResult: Int? = null,
+    val focusLostAtMs: Long? = null,
+    val focusLostReason: Int? = null,
+    val focusGainedAtMs: Long? = null,
 ) {
     val startDelayMs: Long?
         get() = startedAtMs?.let { it - requestedAtMs }
@@ -270,6 +365,30 @@ class TtsPlaybackMetricsRecorder(
 
     fun markError(nowMs: Long, errorCode: Int?) {
         metrics = metrics.copy(errorAtMs = nowMs, errorCode = errorCode, event = TtsPlaybackEvent.ERROR)
+    }
+
+    fun markWarmupStarted(nowMs: Long) {
+        metrics = metrics.copy(startedAtMs = nowMs, event = TtsPlaybackEvent.WARMUP_STARTED)
+    }
+
+    fun markWarmupDone(nowMs: Long) {
+        metrics = metrics.copy(completedAtMs = nowMs, event = TtsPlaybackEvent.WARMUP_DONE)
+    }
+
+    fun markWarmupError(nowMs: Long, errorCode: Int?) {
+        metrics = metrics.copy(errorAtMs = nowMs, errorCode = errorCode, event = TtsPlaybackEvent.WARMUP_ERROR)
+    }
+
+    fun markFocusRequested(nowMs: Long, result: Int) {
+        metrics = metrics.copy(focusRequestedAtMs = nowMs, focusResult = result)
+    }
+
+    fun markFocusLost(nowMs: Long, reason: Int) {
+        metrics = metrics.copy(focusLostAtMs = nowMs, focusLostReason = reason)
+    }
+
+    fun markFocusGained(nowMs: Long) {
+        metrics = metrics.copy(focusGainedAtMs = nowMs)
     }
 
     fun snapshot(): TtsPlaybackMetrics = metrics

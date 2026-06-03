@@ -30,10 +30,17 @@ import com.openclaw.relay.VoiceProofRun
 import com.openclaw.relay.VoiceProofRunStatus
 import com.openclaw.relay.ui.components.ButtonStyle
 import com.openclaw.relay.ui.components.ChipStyle
+import com.openclaw.relay.ui.components.DevPodsAppIconTile
 import com.openclaw.relay.ui.components.DevPodsButton
 import com.openclaw.relay.ui.components.DevPodsCard
 import com.openclaw.relay.ui.components.DevPodsChip
+import com.openclaw.relay.ui.components.DevPodsModalOverlay
+import com.openclaw.relay.ui.components.DevPodsWordmarkLight
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun HelpScreen(
@@ -44,6 +51,7 @@ fun HelpScreen(
     onExportDiagnostics: () -> Unit = {},
     onEnableDevMode: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenPreferences: () -> Unit = {},
     onNotNow: () -> Unit = {},
     onShareDiagnostics: () -> Unit = {},
     onPreviewDiagnostics: () -> Unit = {},
@@ -77,13 +85,14 @@ fun HelpScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(DevPodsSpacing.screenX),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = "Help",
             style = MaterialTheme.typography.headlineSmall,
             color = DevPodsColor.Ink,
+            modifier = Modifier.semantics { heading() },
         )
 
         // A. Bridge unreachable
@@ -93,6 +102,7 @@ fun HelpScreen(
                     text = "Bridge unreachable",
                     style = MaterialTheme.typography.titleMedium,
                     color = DevPodsColor.Red,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -115,6 +125,7 @@ fun HelpScreen(
                 text = "Recovery actions",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(12.dp))
             RecoveryActionRow(
@@ -137,6 +148,7 @@ fun HelpScreen(
                 text = "Permissions",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -160,38 +172,40 @@ fun HelpScreen(
             onRunAudioRouteProbe = onRunAudioRouteProbe,
         )
 
-        // D. Permission modal (shown as a card)
+        // D. Permission modal (dimmed overlay per reference)
         if (showPermissionModal) {
-            DevPodsCard(accentColor = DevPodsColor.Red) {
-                DevPodsChip(text = "Permission needed", style = ChipStyle.Error)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Allow microphone access",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = DevPodsColor.Ink,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "DevPods needs microphone access to capture your command after a wake gesture. You can still pair the bridge without it.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = DevPodsColor.Muted,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DevPodsButton(
-                        text = "Open settings",
-                        onClick = onOpenSettings,
-                        modifier = Modifier.weight(1f),
+            DevPodsModalOverlay(onDismiss = onNotNow) {
+                DevPodsCard(accentColor = DevPodsColor.Red) {
+                    DevPodsChip(text = "Permission needed", style = ChipStyle.Error)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Allow microphone access",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DevPodsColor.Ink,
                     )
-                    DevPodsButton(
-                        text = "Not now",
-                        onClick = onNotNow,
-                        modifier = Modifier.weight(1f),
-                        style = ButtonStyle.Ghost,
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "DevPods needs microphone access to capture your command after a wake gesture. You can still pair the bridge without it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = DevPodsColor.Muted,
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        DevPodsButton(
+                            text = "Open settings",
+                            onClick = onOpenSettings,
+                            modifier = Modifier.weight(1f),
+                        )
+                        DevPodsButton(
+                            text = "Not now",
+                            onClick = onNotNow,
+                            modifier = Modifier.weight(1f),
+                            style = ButtonStyle.Ghost,
+                        )
+                    }
                 }
             }
         }
@@ -202,6 +216,7 @@ fun HelpScreen(
                 text = "Share diagnostics",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -259,6 +274,7 @@ fun HelpScreen(
                 text = "Accessibility",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(12.dp))
             AccessibilityRow(
@@ -284,6 +300,7 @@ fun HelpScreen(
                 text = "Localization",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -333,7 +350,61 @@ fun HelpScreen(
             }
         }
 
-        // I. Recovery footer
+        // I. Preferences entry (Settings moved from primary nav to Help per parity report)
+        DevPodsCard(accentColor = DevPodsColor.Teal) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Preferences",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = DevPodsColor.Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Notifications, nudges, reminders, and learned phrases",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DevPodsColor.Muted,
+                    )
+                }
+                DevPodsButton(
+                    text = "Open",
+                    onClick = onOpenPreferences,
+                    style = ButtonStyle.Secondary,
+                )
+            }
+        }
+
+        DevPodsCard(accentColor = DevPodsColor.Blue) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DevPodsAppIconTile(
+                    modifier = Modifier.size(60.dp),
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    DevPodsWordmarkLight(
+                        modifier = Modifier.width(148.dp),
+                    )
+                    Text(
+                        text = "Android app $appVersion \u00b7 Bridge $bridgeVersion",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DevPodsColor.Muted,
+                    )
+                }
+            }
+        }
+
+        // J. Recovery footer
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -378,6 +449,7 @@ private fun VoiceProofRunCard(
                 text = "Voice proof matrix",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             DevPodsChip(
                 text = voiceProofRun.status.name.lowercase().replace("_", " "),
@@ -463,7 +535,8 @@ private fun RecoveryActionRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .heightIn(min = 44.dp)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 10.dp)
+            .semantics { contentDescription = label },
     ) {
         Text(
             text = label,
@@ -485,7 +558,8 @@ private fun CheckboxRow(
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
             .heightIn(min = 52.dp)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 6.dp)
+            .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Custom checkbox matching prototype style

@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.openclaw.relay.ui.theme.DevPodsColor
 
@@ -29,8 +30,12 @@ fun Waveform(
     isAnimating: Boolean = true,
 ) {
     Row(
-        modifier = modifier.height(76.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        modifier = modifier
+            .height(76.dp)
+            .semantics {
+                contentDescription = if (isAnimating) "Listening animation active" else "Listening animation idle"
+            },
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         barHeights.forEachIndexed { index, heightDp ->
@@ -50,7 +55,7 @@ fun Waveform(
 
             Box(
                 modifier = Modifier
-                    .width(5.dp)
+                    .width(7.dp)
                     .height(heightDp.dp)
                     .background(
                         color = DevPodsColor.Mint.copy(

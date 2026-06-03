@@ -2,6 +2,9 @@ package com.openclaw.relay.signal
 
 import android.content.Context
 import android.util.Log
+import com.openclaw.relay.device.PreferredProviderRecord
+import com.openclaw.relay.device.PreferredProviderSource
+import com.openclaw.relay.device.PreferredProviderStorage
 import com.openclaw.relay.signal.vendor.apple.ApplePodsProvider
 import com.openclaw.relay.signal.vendor.genericgatt.GenericGattBatteryProvider
 import com.openclaw.relay.signal.vendor.nothing.NothingEarProvider
@@ -33,6 +36,7 @@ private const val TAG = "SignalProviderRegistry"
  */
 class SignalProviderRegistry(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val appContext = context.applicationContext
 
     private val mediaSessionProvider = AndroidMediaSessionProvider(context)
     private val assistantProvider = AssistantEntryProvider()
@@ -75,14 +79,41 @@ class SignalProviderRegistry(context: Context) {
         get() = merge(*allProviders.map { it.events }.toTypedArray())
 
     private var isStarted = false
+    private var persistedPreferredId: String? = null
+
+    init {
+        val persisted = PreferredProviderStorage.load(appContext)
+        if (persisted != null) {
+            persistedPreferredId = persisted.providerId
+            reorderProvidersForPersistedPreferred(persisted.providerId)
+        }
+    }
+
+    private fun reorderProvidersForPersistedPreferred(providerId: String) {
+        val preferredIndex = allProviders.indexOfFirst { it.providerId == providerId }
+        if (preferredIndex > 0) {
+            val preferred = allProviders.removeAt(preferredIndex)
+            allProviders.add(0, preferred)
+        }
+    }
 
     fun start() {
         if (isStarted) return
         isStarted = true
 
-        allProviders.forEach { provider ->
+        // Start persisted preferred provider first, but do not block startup on failure
+        val preferred = persistedPreferredId?.let { id -> allProviders.find { it.providerId == id } }
+        if (preferred != null) {
             scope.launch {
-                startProviderSafely(provider)
+                startProviderSafely(preferred)
+            }
+        }
+
+        allProviders.forEach { provider ->
+            if (provider != preferred) {
+                scope.launch {
+                    startProviderSafely(provider)
+                }
             }
         }
 
@@ -181,9 +212,42 @@ class SignalProviderRegistry(context: Context) {
     }
 
     suspend fun probeAll(): Map<String, EarbudSignalProvider.ProbeResult> {
-        return allProviders.associate { provider ->
-            provider.providerId to provider.probe()
+        // Probe persisted preferred provider first if available
+        val preferred = persistedPreferredId?.let { id -> allProviders.find { it.providerId == id } }
+        val results = mutableMapOf<String, EarbudSignalProvider.ProbeResult>()
+        if (preferred != null) {
+            results[preferred.providerId] = preferred.probe()
         }
+        allProviders.forEach { provider ->
+            if (provider != preferred) {
+                results[provider.providerId] = provider.probe()
+            }
+        }
+        return results
+    }
+
+    fun setPersistedPreferredProvider(providerId: String, source: PreferredProviderSource) {
+        val provider = allProviders.find { it.providerId == providerId } ?: return
+        persistedPreferredId = providerId
+        reorderProvidersForPersistedPreferred(providerId)
+        _activeProviders.value = allProviders.toList()
+        updatePreferredProvider()
+        PreferredProviderStorage.save(
+            appContext,
+            PreferredProviderRecord(
+                providerId = providerId,
+                source = source,
+                deviceHash = provider.deviceState.value?.deviceId?.let {
+                    com.openclaw.relay.device.DeviceProfileStorage.hashDeviceIdentity(it)
+                },
+                deviceModel = provider.deviceState.value?.displayName,
+                appVersion = try {
+                    appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
+                } catch (_: Exception) { null },
+                androidVersion = android.os.Build.VERSION.RELEASE,
+                lastSuccessAtMs = System.currentTimeMillis(),
+            )
+        )
     }
 
     fun getProvider(providerId: String): EarbudSignalProvider? {

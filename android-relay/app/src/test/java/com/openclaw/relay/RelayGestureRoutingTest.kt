@@ -141,4 +141,42 @@ class RelayGestureRoutingTest {
         )
         assertFalse(shouldScheduleAutonomyContinue(null))
     }
+
+    @Test
+    fun `calibrated wake signal carries matched action and gesture type`() {
+        val wakeSignal = RelayWakeSignal(
+            trigger = "headset_button_single",
+            source = "android_media_session",
+            sourceLabel = "Android media controls",
+            provider = AndroidMediaSessionSignalProvider.observe(),
+            calibratedGestureType = GestureType.SINGLE_PRESS,
+            matchedCalibratedAction = "WAKE_AND_LISTEN",
+        )
+        assertTrue(shouldOpenListeningWindow(wakeSignal))
+        assertEquals(GestureType.SINGLE_PRESS, wakeSignal.calibratedGestureType)
+        assertEquals("WAKE_AND_LISTEN", wakeSignal.matchedCalibratedAction)
+    }
+
+    @Test
+    fun `calibrated interrupt signal routes to autonomy interrupt`() {
+        val wakeSignal = RelayWakeSignal(
+            trigger = "android_autonomy_interrupt",
+            source = "android_media_session",
+            sourceLabel = "Android media controls",
+            provider = AndroidMediaSessionSignalProvider.observe(),
+            calibratedGestureType = GestureType.DOUBLE_PRESS,
+            matchedCalibratedAction = "INTERRUPT",
+        )
+        assertTrue(shouldOpenListeningWindow(wakeSignal))
+        assertEquals(GestureType.DOUBLE_PRESS, wakeSignal.calibratedGestureType)
+        assertEquals("INTERRUPT", wakeSignal.matchedCalibratedAction)
+    }
+
+    @Test
+    fun `speculative candidate does not open listening window`() {
+        // InputCandidateStarted events are handled separately and should never trigger
+        // a full listening window or bridge command on their own.
+        val candidateTrigger = "input_candidate_started"
+        assertFalse(shouldOpenListeningWindow(candidateTrigger))
+    }
 }

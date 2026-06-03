@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 object DevPodsColor {
     val Background = Color(0xFFF5F1E8)
+    val Canvas = Color(0xFFE9E2D6)
     val Surface = Color(0xFFFFFCF4)
     val Surface2 = Color(0xFFF0E9DC)
 
@@ -31,7 +32,16 @@ object DevPodsColor {
     val DarkPanel = Ink
     val DarkPanelSubtle = Color(0xFFCBEADD)
 
-    // Glow colors for background gradients
-    val GlowGreen = Color(0xFF35D68B)
+    // Glow colors for background blobs
+    val GlowMint = Color(0xFF35D68B)
     val GlowAmber = Color(0xFFF4B860)
+
+    // Glass and border tokens for reference-exact cards and buttons
+    val Glass = Color.White.copy(alpha = 0.58f)
+    val GlassStrong = Color.White.copy(alpha = 0.74f)
+    val GlassBorder = Color.White.copy(alpha = 0.72f)
+    val DangerBorder = Color(0xFFF4A79E)
+
+    // Shadow tokens
+    val PrimaryButtonShadow = Color(0xFF0D1B1E).copy(alpha = 0.16f)
 }

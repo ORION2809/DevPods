@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "openclaw-relay-android"
 include(":app")
+include(":sherpa-runtime")
+include(":wear")

@@ -1,4 +1,8 @@
 <p align="center">
+	<img src="assets/brand/source/devpods-wordmark-light-16x9.png" alt="DevPods wordmark" width="520" />
+</p>
+
+<p align="center">
 	<img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 5.9" />
 	<img src="https://img.shields.io/badge/Node.js-Local_Runtime-5FA04E?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js runtime" />
 	<img src="https://img.shields.io/badge/OpenClaw-Integrated-111827?style=for-the-badge" alt="OpenClaw integrated" />
@@ -350,4 +354,3 @@ The next highest-value work is not more simulator polish. It is moving the valid
 5. Preserve the current safety model while widening transport and hardware support.
 
 DevPods already proves the critical systems problem: safe event intake, workspace-bounded action routing, approval gating, concise spoken response shaping, and optional OpenClaw integration. That is the foundation the hardware layer can now build on.
-

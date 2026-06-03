@@ -1,6 +1,8 @@
 package com.openclaw.relay
 
+import android.media.AudioManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,5 +43,77 @@ class TtsPlaybackMetricsTest {
         assertEquals(40L, metrics.startDelayMs)
         assertEquals(860L, metrics.playbackDurationMs)
         assertTrue(metrics.stopLatencyMs == null)
+    }
+
+    @Test
+    fun `recorder captures audio focus request result`() {
+        val recorder = TtsPlaybackMetricsRecorder(
+            utteranceId = "relay-focus",
+            textLength = 10,
+            requestedAtMs = 1_000L,
+        )
+
+        recorder.markFocusRequested(1_010L, AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+
+        val metrics = recorder.snapshot()
+        assertEquals(1_010L, metrics.focusRequestedAtMs)
+        assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, metrics.focusResult)
+        assertNull(metrics.focusLostAtMs)
+        assertNull(metrics.focusLostReason)
+        assertNull(metrics.focusGainedAtMs)
+    }
+
+    @Test
+    fun `recorder captures transient focus loss`() {
+        val recorder = TtsPlaybackMetricsRecorder(
+            utteranceId = "relay-loss",
+            textLength = 10,
+            requestedAtMs = 1_000L,
+        )
+
+        recorder.markFocusRequested(1_010L, AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        recorder.markStarted(1_020L)
+        recorder.markFocusLost(1_050L, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+
+        val metrics = recorder.snapshot()
+        assertEquals(1_050L, metrics.focusLostAtMs)
+        assertEquals(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, metrics.focusLostReason)
+        assertNull(metrics.focusGainedAtMs)
+    }
+
+    @Test
+    fun `recorder captures focus gain after transient loss`() {
+        val recorder = TtsPlaybackMetricsRecorder(
+            utteranceId = "relay-gain",
+            textLength = 10,
+            requestedAtMs = 1_000L,
+        )
+
+        recorder.markFocusRequested(1_010L, AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        recorder.markFocusLost(1_030L, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        recorder.markFocusGained(1_060L)
+
+        val metrics = recorder.snapshot()
+        assertEquals(1_060L, metrics.focusGainedAtMs)
+        assertEquals(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, metrics.focusLostReason)
+    }
+
+    @Test
+    fun `recorder captures permanent focus loss`() {
+        val recorder = TtsPlaybackMetricsRecorder(
+            utteranceId = "relay-perm",
+            textLength = 10,
+            requestedAtMs = 1_000L,
+        )
+
+        recorder.markFocusRequested(1_010L, AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        recorder.markStarted(1_020L)
+        recorder.markFocusLost(1_040L, AudioManager.AUDIOFOCUS_LOSS)
+        recorder.markError(1_045L, errorCode = null)
+
+        val metrics = recorder.snapshot()
+        assertEquals(TtsPlaybackEvent.ERROR, metrics.event)
+        assertEquals(1_040L, metrics.focusLostAtMs)
+        assertEquals(AudioManager.AUDIOFOCUS_LOSS, metrics.focusLostReason)
     }
 }

@@ -13,6 +13,7 @@ export interface LatestCiFailureSummary {
   url: string | null;
   sha: string | null;
   reason: string | null;
+  failedAtMs: number | null;
 }
 
 interface WorkflowRun {
@@ -22,6 +23,8 @@ interface WorkflowRun {
   head_branch?: string | null;
   html_url?: string | null;
   head_sha?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 }
 
 export async function getLatestCiFailure(
@@ -37,6 +40,7 @@ export async function getLatestCiFailure(
       url: null,
       sha: null,
       reason: 'The current workspace is not a git repository.',
+      failedAtMs: null,
     };
   }
 
@@ -50,6 +54,7 @@ export async function getLatestCiFailure(
       url: null,
       sha: null,
       reason: 'No GitHub Actions remote is configured for this workspace.',
+      failedAtMs: null,
     };
   }
 
@@ -63,6 +68,7 @@ export async function getLatestCiFailure(
       url: null,
       sha: null,
       reason: 'The origin remote is not a GitHub repository.',
+      failedAtMs: null,
     };
   }
 
@@ -92,6 +98,7 @@ export async function getLatestCiFailure(
           response.status === 403 || response.status === 404
             ? 'GitHub Actions data is unavailable for this repository without additional access.'
             : `GitHub Actions lookup failed with status ${response.status}.`,
+        failedAtMs: null,
       };
     }
 
@@ -106,6 +113,7 @@ export async function getLatestCiFailure(
         url: null,
         sha: null,
         reason: 'GitHub Actions lookup returned too much data for the local runtime to process safely.',
+        failedAtMs: null,
       };
     }
 
@@ -122,8 +130,15 @@ export async function getLatestCiFailure(
         url: null,
         sha: null,
         reason: `No recent GitHub Actions failures were found for ${repository.owner}/${repository.repo}.`,
+        failedAtMs: null,
       };
     }
+
+    const failedAtMs = failure.updated_at
+      ? Date.parse(failure.updated_at)
+      : failure.created_at
+        ? Date.parse(failure.created_at)
+        : null;
 
     return {
       repository: `${repository.owner}/${repository.repo}`,
@@ -133,6 +148,7 @@ export async function getLatestCiFailure(
       url: failure.html_url ?? null,
       sha: failure.head_sha?.slice(0, 7) ?? null,
       reason: null,
+      failedAtMs: Number.isNaN(failedAtMs) ? null : failedAtMs,
     };
   } catch (error) {
     return {
@@ -146,6 +162,7 @@ export async function getLatestCiFailure(
         error instanceof Error && error.name === 'AbortError'
           ? 'GitHub Actions lookup timed out.'
           : 'GitHub Actions lookup failed locally. Check network connectivity.',
+      failedAtMs: null,
     };
   }
 }

@@ -98,7 +98,16 @@ async function startMockOpenClawGateway(options: {
   };
 }
 
-describe('openclaw mode', () => {
+const openClawSandboxAvailable = (() => {
+  try {
+    require.resolve('@mariozechner/pi-agent-core');
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+describe.skipIf(!openClawSandboxAvailable)('openclaw mode', () => {
   let repoDir: string;
   let auditLogPath: string;
 

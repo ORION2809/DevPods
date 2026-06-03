@@ -16,6 +16,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -33,7 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,21 +43,21 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.openclaw.relay.device.DeviceCapabilityEntry
 import com.openclaw.relay.ui.components.BottomNav
-import com.openclaw.relay.ui.components.DevPodsBackground
+import com.openclaw.relay.ui.components.DevPodsScreenShell
 import com.openclaw.relay.ui.components.DevPodsTab
-import com.openclaw.relay.ui.components.TopBar
 import com.openclaw.relay.ui.screens.ActivityScreen
 import com.openclaw.relay.ui.screens.DeveloperModeScreen
 import com.openclaw.relay.ui.screens.DeviceScreen
 import com.openclaw.relay.ui.screens.HelpScreen
 import com.openclaw.relay.ui.screens.HomeScreen
 import com.openclaw.relay.ui.screens.OnboardingScreen
+import com.openclaw.relay.ui.screens.SettingsScreen
 import com.openclaw.relay.ui.screens.SetupWizardScreen
 import com.openclaw.relay.ui.theme.DevPodsColor
 import com.openclaw.relay.diagnostic.DiagnosticExportOptions
 import com.openclaw.relay.ui.theme.DevPodsTheme
 
-private const val EXPECTED_PROTOCOL_VERSION = 1
+// EXPECTED_PROTOCOL_VERSION moved to RelayModels.kt for shared access
 
 class MainActivity : ComponentActivity() {
     private val relayViewModel: RelayViewModel by viewModels()
@@ -68,6 +70,8 @@ class MainActivity : ComponentActivity() {
         consumePairingDataIntent(intent)
 
         setContent {
+            // TODO: Enable dark mode after refactoring ~180 hardcoded DevPodsColor.* references
+            // across all screens to use MaterialTheme.colorScheme.*. See docs/50-android-ui-deep-dive-audit.md
             DevPodsTheme(darkTheme = false) {
                 RelayApp(
                     relayViewModel = relayViewModel,
@@ -183,6 +187,7 @@ private fun RelayApp(
 ) {
     val state by relayViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     var selectedTab by rememberSaveable { mutableStateOf(DevPodsTab.Home) }
     var isDevMode by rememberSaveable { mutableStateOf(false) }
     var showImportDialog by rememberSaveable { mutableStateOf(false) }
@@ -194,6 +199,10 @@ private fun RelayApp(
     var diagnosticsIncludeErrorCategories by rememberSaveable { mutableStateOf(true) }
     var diagnosticsIncludeRawRoute by rememberSaveable { mutableStateOf(false) }
     var permissionRefreshTick by remember { mutableStateOf(0) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showApprovalDetail by rememberSaveable { mutableStateOf(false) }
+    var showRemoteBridgeDialog by rememberSaveable { mutableStateOf(false) }
+    var remoteBridgeUrl by rememberSaveable { mutableStateOf("") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -237,40 +246,75 @@ private fun RelayApp(
         }
     }
 
+    LaunchedEffect(Unit) {
+        relayViewModel.loadNotificationPreferences()
+        relayViewModel.loadReminders()
+        relayViewModel.loadLearnedPhrases()
+        relayViewModel.loadNudgePolicy()
+    }
+
     if (state.showOnboarding) {
-        OnboardingScreen(
-            onDismiss = {
-                relayViewModel.dismissOnboarding(context)
-                relayViewModel.startSetup(context)
-            },
-        )
+        DevPodsScreenShell(
+            isDevMode = false,
+            note = "First launch \u00b7 Product promise before configuration.",
+        ) { _ ->
+            OnboardingScreen(
+                onDismiss = {
+                    relayViewModel.dismissOnboarding(context)
+                    relayViewModel.startSetup(context)
+                },
+                onSkip = {
+                    relayViewModel.dismissOnboarding(context)
+                },
+            )
+        }
         return
     }
 
     if (state.showSetupWizard) {
-        SetupWizardScreen(
-            phase = state.setupPhase,
-            testState = state.setupTestState,
-            bridgeStatus = state.bridgeStatus,
-            config = state.config,
-            errorMessage = state.errorMessage,
-            userFacingErrorMessage = state.userFacingErrorMessage,
-            onStartSetup = { relayViewModel.startSetup(context) },
-            onSkipSetup = {
-                relayViewModel.skipSetup(context)
-                selectedTab = DevPodsTab.Home
-            },
-            onScanQr = scanQr,
-            onImportLink = openImportDialog,
-            onProbeDevice = { relayViewModel.probeDevice(context) },
-            onTestWake = { relayViewModel.testWake(context) },
-            onTestStt = { relayViewModel.testStt(context) },
-            onCompleteSetup = {
-                relayViewModel.completeSetup(context)
-                selectedTab = DevPodsTab.Home
-            },
-            onRetry = { retrySetupPhase(state.setupPhase, relayViewModel, context) },
-        )
+        DevPodsScreenShell(
+            isDevMode = false,
+            note = "Setup \u00b7 Guided verification",
+        ) { _ ->
+            SetupWizardScreen(
+                phase = state.setupPhase,
+                testState = state.setupTestState,
+                bridgeStatus = state.bridgeStatus,
+                config = state.config,
+                errorMessage = state.errorMessage,
+                userFacingErrorMessage = state.userFacingErrorMessage,
+                discoveredBridges = state.discoveredBridges,
+                isDiscovering = state.isDiscovering,
+                onStartSetup = { relayViewModel.startSetup(context) },
+                onSkipSetup = {
+                    relayViewModel.skipSetup(context)
+                    selectedTab = DevPodsTab.Home
+                },
+                onScanQr = scanQr,
+                onImportLink = openImportDialog,
+                onSelectDiscoveredBridge = { bridge: com.openclaw.relay.DiscoveredBridge ->
+                    relayViewModel.selectDiscoveredBridge(context, bridge)
+                },
+                onProbeDevice = { relayViewModel.probeDevice(context) },
+                onTestWake = { relayViewModel.testWake(context) },
+                onTestStt = { relayViewModel.testStt(context) },
+                onCompleteSetup = {
+                    relayViewModel.completeSetup(context)
+                    selectedTab = DevPodsTab.Home
+                },
+                onRetry = { retrySetupPhase(state.setupPhase, relayViewModel, context) },
+                calibrationSession = state.calibrationSession,
+                calibrationProfile = state.calibrationProfile,
+                onSkipCalibration = { relayViewModel.skipCalibration() },
+                onFinishCalibration = { relayViewModel.finishCalibration(context) },
+                onGestureActionSelected = { gestureType, action ->
+                    relayViewModel.setGestureAction(gestureType, action)
+                },
+                onCompleteGestureMapping = {
+                    relayViewModel.completeGestureMapping(context)
+                },
+            )
+        }
         if (showImportDialog) {
             PairingImportDialog(
                 value = importLink,
@@ -279,6 +323,17 @@ private fun RelayApp(
                 onImport = {
                     relayViewModel.importPairingUri(context, importLink)
                     showImportDialog = false
+                },
+            )
+        }
+        if (showRemoteBridgeDialog) {
+            RemoteBridgeDialog(
+                value = remoteBridgeUrl,
+                onValueChange = { remoteBridgeUrl = it },
+                onDismiss = { showRemoteBridgeDialog = false },
+                onImport = {
+                    relayViewModel.importPrivateNetworkBridge(context, remoteBridgeUrl)
+                    showRemoteBridgeDialog = false
                 },
             )
         }
@@ -316,6 +371,10 @@ private fun RelayApp(
         onToggleAssistantFallback = {
             relayViewModel.updateAssistantFallback(context, !state.assistantFallback)
         },
+        onRecalibrate = {
+            relayViewModel.resetCalibration(context)
+            relayViewModel.startCalibration(context)
+        },
         onStartRelay = { relayViewModel.startRelay(context) },
         onStopRelay = { relayViewModel.stopRelay(context) },
         onCheckHealth = { relayViewModel.checkHealth(context) },
@@ -326,8 +385,18 @@ private fun RelayApp(
         onResetVoiceProofRun = { relayViewModel.resetVoiceProofRun() },
         onRunAudioRouteProbe = { relayViewModel.runAudioRouteProbe(context) },
         onTapTest = { relayViewModel.tapTest(context) },
-        onApprove = { relayViewModel.approve(context) },
-        onReject = { relayViewModel.reject(context) },
+        onRunSherpaBenchmark = { relayViewModel.runInteractiveSherpaBenchmark(context) },
+        onToggleOfflineCommandRecognition = { enabled ->
+            relayViewModel.toggleOfflineCommandRecognition(context, enabled)
+        },
+        onApprove = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            relayViewModel.approve(context)
+        },
+        onReject = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            relayViewModel.reject(context)
+        },
         // onCancel callback removed — cancel action is handled through service intents directly
         onRetryQueue = {
             relayViewModel.retryQueuedBridgeEvents(context)
@@ -358,7 +427,98 @@ private fun RelayApp(
         onDiagnosticsCapabilityMatrixChanged = { diagnosticsIncludeCapabilityMatrix = it },
         onDiagnosticsErrorCategoriesChanged = { diagnosticsIncludeErrorCategories = it },
         onDiagnosticsRawRouteChanged = { diagnosticsIncludeRawRoute = it },
+        onOpenPreferences = { showSettings = true },
+        showApprovalDetail = showApprovalDetail,
+        onDismissApprovalDetail = { showApprovalDetail = false },
+        onShowApprovalDetail = { showApprovalDetail = true },
+        onToggleFastWake = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(fastWakeEnabled = enabled) }
+        },
+        onToggleTtsWarmKeepalive = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(ttsWarmKeepaliveEnabled = enabled) }
+        },
+        onToggleSpeechRecognizerPrewarm = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(speechRecognizerPrewarmEnabled = enabled) }
+        },
+        onTogglePreferredProviderOrdering = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(preferredProviderOrderingEnabled = enabled) }
+        },
+        onToggleSpeculativeRoutePrepare = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(speculativeRoutePrepareEnabled = enabled) }
+        },
+        onToggleBridgePrefetchOnWake = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(bridgePrefetchOnWakeEnabled = enabled) }
+        },
+        onToggleEventStreaming = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(eventStreamingEnabled = enabled) }
+        },
+        onToggleLatencySummaryExport = { enabled ->
+            relayViewModel.updateLatencyFlag(context) { it.copy(latencySummaryExportEnabled = enabled) }
+        },
+        onImportRemoteBridge = { showRemoteBridgeDialog = true },
     )
+
+    if (showSettings) {
+        val settingsModifier = Modifier.fillMaxSize().background(DevPodsColor.Background)
+        SettingsScreen(
+            notificationPreference = state.notificationPreference,
+            reminders = state.reminders,
+            learnedPhrases = state.learnedPhrases,
+            nudgePolicy = state.nudgePolicy,
+            quickStartEnabled = state.quickStartEnabled,
+            setupPhase = state.setupPhase.name,
+            onNotificationStyleChanged = { style ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(style = style))
+            },
+            onToggleBadge = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(badgeEnabled = enabled))
+            },
+            onToggleSoftPingTts = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(softPingTtsEnabled = enabled))
+            },
+            onToggleNudgeTts = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(nudgeTtsEnabled = enabled))
+            },
+            onToggleReminderTts = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(reminderTtsEnabled = enabled))
+            },
+            onToggleShowSensitive = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(showSensitiveInNotifications = enabled))
+            },
+            onToggleWearApproval = { enabled ->
+                val current = state.notificationPreference ?: NotificationPreference(sessionId = state.config.sessionId)
+                relayViewModel.saveNotificationPreferences(current.copy(wearApprovalEnabled = enabled))
+            },
+            onCancelReminder = { relayViewModel.cancelReminder(it) },
+            onCreateReminder = { summary, dueAtMs -> relayViewModel.createReminder(summary, dueAtMs) },
+            onDeleteLearnedPhrase = { relayViewModel.deleteLearnedPhrase(it) },
+            onUpdateLearnedPhraseIntent = { phrase, intent ->
+                relayViewModel.saveLearnedPhrase(phrase.copy(intent = intent))
+            },
+            onResetLearnedPhrases = { relayViewModel.resetLearnedPhrases() },
+            onToggleNudgeEnabled = { enabled ->
+                val current = state.nudgePolicy ?: NudgePolicy(sessionId = state.config.sessionId)
+                relayViewModel.saveNudgePolicy(current.copy(enabled = enabled))
+            },
+            onToggleNudgeTypeMuted = { type, muted ->
+                val current = state.nudgePolicy ?: NudgePolicy(sessionId = state.config.sessionId)
+                val updatedMuted = if (muted) current.mutedTypes + type else current.mutedTypes - type
+                relayViewModel.saveNudgePolicy(current.copy(mutedTypes = updatedMuted))
+            },
+            onNudgeThresholdsChanged = { thresholds ->
+                val current = state.nudgePolicy ?: NudgePolicy(sessionId = state.config.sessionId)
+                relayViewModel.saveNudgePolicy(current.copy(thresholds = thresholds))
+            },
+            onDismiss = { showSettings = false },
+            modifier = settingsModifier,
+        )
+    }
 
     if (showImportDialog) {
         PairingImportDialog(
@@ -385,6 +545,7 @@ private fun RelayAppShell(
     diagnosticsIncludeErrorCategories: Boolean,
     diagnosticsIncludeRawRoute: Boolean,
     permissionRefreshTick: Int,
+    showApprovalDetail: Boolean,
     onTabSelected: (DevPodsTab) -> Unit,
     onRequestPermissions: () -> Unit,
     onPairBridge: () -> Unit,
@@ -409,6 +570,8 @@ private fun RelayAppShell(
     onResetVoiceProofRun: () -> Unit,
     onRunAudioRouteProbe: () -> Unit,
     onTapTest: () -> Unit,
+    onRunSherpaBenchmark: () -> Unit,
+    onToggleOfflineCommandRecognition: (Boolean) -> Unit,
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onRetryQueue: () -> Unit,
@@ -419,10 +582,23 @@ private fun RelayAppShell(
     onExportDiagnostics: () -> Unit,
     onEnableDevMode: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenPreferences: () -> Unit,
+    onDismissApprovalDetail: () -> Unit,
+    onShowApprovalDetail: () -> Unit,
     onDiagnosticsPhoneModelChanged: (Boolean) -> Unit,
     onDiagnosticsCapabilityMatrixChanged: (Boolean) -> Unit,
     onDiagnosticsErrorCategoriesChanged: (Boolean) -> Unit,
     onDiagnosticsRawRouteChanged: (Boolean) -> Unit,
+    onRecalibrate: () -> Unit = {},
+    onImportRemoteBridge: () -> Unit = {},
+    onToggleFastWake: (Boolean) -> Unit = {},
+    onToggleTtsWarmKeepalive: (Boolean) -> Unit = {},
+    onToggleSpeechRecognizerPrewarm: (Boolean) -> Unit = {},
+    onTogglePreferredProviderOrdering: (Boolean) -> Unit = {},
+    onToggleSpeculativeRoutePrepare: (Boolean) -> Unit = {},
+    onToggleBridgePrefetchOnWake: (Boolean) -> Unit = {},
+    onToggleEventStreaming: (Boolean) -> Unit = {},
+    onToggleLatencySummaryExport: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val microphoneAllowed = remember(permissionRefreshTick) {
@@ -434,24 +610,28 @@ private fun RelayAppShell(
     }
     val appVersion = remember { appVersionName(context) }
 
-    DevPodsBackground {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent,
-            topBar = { TopBar(isDevMode = isDevMode) },
-            bottomBar = {
-                BottomNav(
-                    selectedTab = selectedTab,
-                    isDevMode = isDevMode,
-                    onTabSelected = onTabSelected,
-                )
-            },
-        ) { innerPadding ->
-            val contentModifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+    val note = when (selectedTab) {
+        DevPodsTab.Home -> "Home answers: what state are we in, and what should I do next?"
+        DevPodsTab.Activity -> "Approvals are global, visible, and consequence-led."
+        DevPodsTab.Device -> "Device owns pairing, setup, and hardware truth."
+        DevPodsTab.Help -> "Recovery is a core product surface, not an engineering afterthought."
+        DevPodsTab.Dev -> "Developer Mode keeps QA controls without polluting Standard Mode."
+    }
 
-            when (selectedTab) {
+    DevPodsScreenShell(
+        isDevMode = isDevMode,
+        note = note,
+        bottomBar = {
+            BottomNav(
+                selectedTab = selectedTab,
+                isDevMode = isDevMode,
+                onTabSelected = onTabSelected,
+            )
+        },
+    ) { _ ->
+        val contentModifier = Modifier.fillMaxSize()
+
+        when (selectedTab) {
                 DevPodsTab.Home -> HomeScreen(
                     state = state,
                     onPairBridge = onPairBridge,
@@ -471,11 +651,13 @@ private fun RelayAppShell(
                     state = state,
                     diagnosticsExported = diagnosticsExported,
                     queuedActionsSent = queuedActionsSent,
-                    showApprovalDetail = state.pendingApprovalRequest != null,
+                    showApprovalDetail = showApprovalDetail,
                     onApprove = onApprove,
                     onReject = onReject,
                     onDismissDiagnostics = onDismissDiagnostics,
                     onDismissQueued = onDismissQueued,
+                    onDismissApprovalDetail = onDismissApprovalDetail,
+                    onShowApprovalDetail = onShowApprovalDetail,
                     modifier = contentModifier,
                 )
 
@@ -495,6 +677,8 @@ private fun RelayAppShell(
                     onToggleAssistantFallback = onToggleAssistantFallback,
                     onTestVoice = onTestSpeaker,
                     onRepairMic = onRequestPermissions,
+                    onRecalibrate = onRecalibrate,
+                    onImportRemoteBridge = onImportRemoteBridge,
                     modifier = contentModifier,
                 )
 
@@ -529,6 +713,7 @@ private fun RelayAppShell(
                     onExportDiagnostics = onExportDiagnostics,
                     onEnableDevMode = onEnableDevMode,
                     onOpenSettings = onOpenSettings,
+                    onOpenPreferences = onOpenPreferences,
                     onNotNow = onDismissError,
                     onShareDiagnostics = onExportDiagnostics,
                     onPreviewDiagnostics = onExportDiagnostics,
@@ -547,6 +732,9 @@ private fun RelayAppShell(
                     lastWake = state.lastWakeSignal,
                     latency = state.latency,
                     isServiceRunning = state.isServiceRunning,
+                    sherpaPromotionState = state.voiceDiagnostics.sherpaPromotionState,
+                    offlineCommandRecognitionEnabled = state.config.speechInputMode == SpeechInputMode.SHERPA_EVALUATION,
+                    benchmarkSession = state.benchmarkSession,
                     onRequestPermissions = onRequestPermissions,
                     onStartRelay = onStartRelay,
                     onStopRelay = onStopRelay,
@@ -555,12 +743,21 @@ private fun RelayAppShell(
                     onWakeAndListen = onWakeAndListen,
                     onTestSpeaker = onTestSpeaker,
                     onTapTest = onTapTest,
+                    onRunSherpaBenchmark = onRunSherpaBenchmark,
+                    onToggleOfflineCommandRecognition = onToggleOfflineCommandRecognition,
+                    onToggleFastWake = onToggleFastWake,
+                    onToggleTtsWarmKeepalive = onToggleTtsWarmKeepalive,
+                    onToggleSpeechRecognizerPrewarm = onToggleSpeechRecognizerPrewarm,
+                    onTogglePreferredProviderOrdering = onTogglePreferredProviderOrdering,
+                    onToggleSpeculativeRoutePrepare = onToggleSpeculativeRoutePrepare,
+                    onToggleBridgePrefetchOnWake = onToggleBridgePrefetchOnWake,
+                    onToggleEventStreaming = onToggleEventStreaming,
+                    onToggleLatencySummaryExport = onToggleLatencySummaryExport,
                     modifier = contentModifier,
                 )
             }
         }
     }
-}
 
 @Composable
 private fun PairingImportDialog(
@@ -593,6 +790,37 @@ private fun PairingImportDialog(
     )
 }
 
+@Composable
+private fun RemoteBridgeDialog(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onImport: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remote private network bridge") },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = { Text("https://host:port") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onImport) {
+                Text("Connect")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
 private fun retrySetupPhase(
     phase: SetupPhase,
     relayViewModel: RelayViewModel,
@@ -601,10 +829,14 @@ private fun retrySetupPhase(
     when (phase) {
         SetupPhase.NOT_STARTED -> relayViewModel.startSetup(context)
         SetupPhase.PAIRING -> relayViewModel.checkHealth(context)
+        SetupPhase.QUICK_START -> relayViewModel.checkHealth(context)
         SetupPhase.DEVICE_PROBE -> relayViewModel.probeDevice(context)
+        SetupPhase.CALIBRATION -> relayViewModel.startCalibration(context)
+        SetupPhase.GESTURE_MAPPING -> relayViewModel.startCalibration(context)
         SetupPhase.GESTURE_TEST -> relayViewModel.testWake(context)
         SetupPhase.STT_TEST -> relayViewModel.testStt(context)
-        SetupPhase.COMPLETE -> relayViewModel.completeSetup(context)
+        SetupPhase.COMPLETE_PROVEN -> relayViewModel.testStt(context)
+        SetupPhase.COMPLETE_DEGRADED -> relayViewModel.testStt(context)
     }
 }
 

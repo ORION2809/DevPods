@@ -34,11 +34,14 @@ try {
     $packagingRoot = Join-Path $repoRoot 'packaging\windows'
     Copy-Item (Join-Path $packagingRoot 'start-devpods-bridge.ps1') (Join-Path $resolvedOutputDir 'start-devpods-bridge.ps1') -Force
     Copy-Item (Join-Path $packagingRoot 'start-devpods-bridge.cmd') (Join-Path $resolvedOutputDir 'start-devpods-bridge.cmd') -Force
+    Copy-Item (Join-Path $packagingRoot 'create-devpods-shortcut.ps1') (Join-Path $resolvedOutputDir 'create-devpods-shortcut.ps1') -Force
+    Copy-Item (Join-Path $packagingRoot 'devpods-bridge.ico') (Join-Path $resolvedOutputDir 'devpods-bridge.ico') -Force
     Copy-Item (Join-Path $packagingRoot 'bridge-config.example.json') (Join-Path $resolvedOutputDir 'bridge-config.example.json') -Force
     Copy-Item (Join-Path $packagingRoot 'bridge-config.example.json') (Join-Path $resolvedOutputDir 'bridge-config.json') -Force
 
     Write-Host "Packaged DevPods Bridge portable bundle at $resolvedOutputDir"
     Write-Host "Run start-devpods-bridge.cmd to start the bridge and open the pairing page."
+    Write-Host "Run create-devpods-shortcut.ps1 to create a branded Windows shortcut with the DevPods icon."
 } finally {
     Pop-Location
 }

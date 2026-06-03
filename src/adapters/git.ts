@@ -7,6 +7,9 @@ export interface WorkspaceStatus {
   changedFiles: number;
   mainChangedFile: string | null;
   testsRunning: boolean;
+  lastCommitAtMs: number | null;
+  aheadBy: number;
+  behindBy: number;
 }
 
 export interface CommitMessageSuggestion {
@@ -57,6 +60,9 @@ export async function getWorkspaceStatus(cwd: string): Promise<WorkspaceStatus> 
       changedFiles: 0,
       mainChangedFile: null,
       testsRunning: false,
+      lastCommitAtMs: null,
+      aheadBy: 0,
+      behindBy: 0,
     };
   }
 
@@ -69,6 +75,9 @@ export async function getWorkspaceStatus(cwd: string): Promise<WorkspaceStatus> 
       changedFiles: 0,
       mainChangedFile: null,
       testsRunning: false,
+      lastCommitAtMs: null,
+      aheadBy: 0,
+      behindBy: 0,
     };
   }
 
@@ -78,12 +87,38 @@ export async function getWorkspaceStatus(cwd: string): Promise<WorkspaceStatus> 
     .filter(Boolean)
     .filter((line) => !isIgnoredWorkspaceFile(extractPathFromPorcelain(line)));
 
+  const [lastCommit, aheadBehind] = await Promise.all([
+    runCommandCapture('git', ['log', '-1', '--format=%ct'], { cwd, timeoutMs: 5000 }),
+    runCommandCapture('git', ['rev-list', '--count', '--left-right', '@{u}...HEAD'], {
+      cwd,
+      timeoutMs: 5000,
+      env: nonInteractiveGitEnv,
+    }),
+  ]);
+
+  const lastCommitAtMs = lastCommit.exitCode === 0
+    ? Number.parseInt(lastCommit.stdout.trim(), 10) * 1000
+    : null;
+
+  let aheadBy = 0;
+  let behindBy = 0;
+  if (aheadBehind.exitCode === 0) {
+    const parts = aheadBehind.stdout.trim().split(/\s+/);
+    if (parts.length === 2) {
+      behindBy = Number.parseInt(parts[0], 10) || 0;
+      aheadBy = Number.parseInt(parts[1], 10) || 0;
+    }
+  }
+
   return {
     repoDetected: true,
     branch: branch.stdout.trim() || 'unknown',
     changedFiles: changedLines.length,
     mainChangedFile: extractPathFromPorcelain(changedLines[0] ?? null),
     testsRunning: false,
+    lastCommitAtMs,
+    aheadBy,
+    behindBy,
   };
 }
 

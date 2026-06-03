@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DevPods</string>
+    <string name="tile_name">DevPods Status</string>
+    <string name="tile_label">DevPods</string>
+</resources>

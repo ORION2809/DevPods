@@ -13,6 +13,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.openclaw.relay.ui.theme.DevPodsColor
 
@@ -25,6 +27,9 @@ fun CountdownRing(
     Box(
         modifier = modifier
             .size(72.dp)
+            .semantics {
+                contentDescription = "$seconds seconds remaining"
+            }
             .drawBehind {
                 val strokeWidth = 5.dp.toPx()
                 val startAngle = -90f

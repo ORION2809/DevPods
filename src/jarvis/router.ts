@@ -32,6 +32,10 @@ export function resolveIntent(request: BridgeRequest): IntentName {
     return 'summarize_diff';
   }
 
+  if (utterance.includes('remind me')) {
+    return 'create_reminder';
+  }
+
   if (utterance.includes('ci') || utterance.includes('build failed') || utterance.includes('github actions')) {
     return 'latest_ci_failure';
   }
@@ -58,6 +62,10 @@ export function resolveIntent(request: BridgeRequest): IntentName {
 
   if (utterance.includes('status') || utterance.includes('branch')) {
     return 'quick_status';
+  }
+
+  if (utterance.includes('remind me')) {
+    return 'create_reminder';
   }
 
   return 'quick_status';
@@ -87,5 +95,7 @@ export function describeIntent(intent: IntentName): string {
       return 'Delete the selected files';
     case 'revert':
       return 'Revert local changes';
+    case 'create_reminder':
+      return 'Create a reminder';
   }
 }

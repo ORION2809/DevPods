@@ -1,0 +1,55 @@
+{
+  "proofRunId": "TEMPLATE-personalized-collaborator-features",
+  "startedAt": "2026-05-29T12:00:00Z",
+  "proofTier": "T1_EMULATOR_SYNTHETIC",
+  "phoneModel": "emulator",
+  "androidVersion": "15",
+  "earbudModel": "emulator_synthetic",
+  "providerId": "emulator",
+  "wakePath": "android_media_session",
+  "inputPath": "synthetic_text",
+  "outputPath": "fake_tts",
+  "engineId": "synthetic",
+  "bridgeMode": "local",
+  "routeProofSource": "synthetic",
+  "physicalBluetoothProven": false,
+  "status": "template",
+  "blockingFailures": [],
+  "sessions": [
+    {
+      "sessionNumber": 1,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true
+    },
+    {
+      "sessionNumber": 2,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true
+    },
+    {
+      "sessionNumber": 3,
+      "wakeDetected": true,
+      "sttProducedTranscript": true,
+      "bridgeReached": true,
+      "ttsPlayed": true
+    }
+  ],
+  "interruptionTests": [],
+  "appVersion": "1.0.0",
+  "bridgeVersion": "1.0.0",
+  "redactionMetadata": {
+    "rawAudioStored": false,
+    "transcriptsRedacted": true,
+    "personalDataRemoved": true
+  },
+  "diagnosticExportHash": "sha256-placeholder",
+  "mdnsDiscovered": true,
+  "quickStartUsed": true,
+  "approvalNotificationHandled": true,
+  "wearTileSynced": false,
+  "lockScreenDetailEnabled": true
+}

@@ -3,4 +3,9 @@
     <string name="app_name">DevPods Relay</string>
     <string name="relay_notification_title">DevPods Relay active</string>
     <string name="relay_notification_body">Listening for headset and push-to-talk commands.</string>
+    <string name="pairing_discovery_local_wifi">Discovery works on local Wi-Fi. For private VPN, paste the bridge URL.</string>
+    <string name="pairing_release_https_required">Release builds require HTTPS for discovered bridges.</string>
+    <string name="pairing_private_network_label">Remote private network</string>
+    <string name="pairing_private_network_hint">Paste the bridge URL manually (e.g., https://bridge.local:4545)</string>
+    <string name="pairing_mdns_unavailable_warning">mDNS discovery is unavailable on this network. Use manual URL entry for private networks.</string>
 </resources>

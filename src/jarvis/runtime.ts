@@ -10,6 +10,7 @@ import { optimizeSpeak } from './voice-optimize';
 import { AuditLog } from '../bridge/audit-log';
 import { redactText } from '../policy/redaction';
 import { BackgroundCommandScheduler } from './background-command-scheduler';
+import { WorkspaceSnapshotCache } from './workspace-snapshot-cache';
 
 const allowedCommands = new Set(['npm', 'node', 'git']);
 const dangerousArgumentPattern = /[;&|`$<>\n\r]/;
@@ -33,6 +34,7 @@ export class JarvisRuntime {
   constructor(
     private readonly auditLog: AuditLog,
     private readonly notifyBackground?: (sessionId: string, response: JarvisResponse) => Promise<void> | void,
+    private readonly cache: WorkspaceSnapshotCache = new WorkspaceSnapshotCache(),
   ) {}
 
   cancelBackgroundWork(sessionId: string): 'queued_cancelled' | 'running_cancelled' | 'none' {
@@ -93,7 +95,7 @@ export class JarvisRuntime {
   }
 
   private async quickStatus(workspace: WorkspaceConfig): Promise<JarvisResponse> {
-    const status = await getWorkspaceStatus(workspace.rootPath);
+    const status = await this.cache.getStatus(workspace);
 
     if (!status.repoDetected) {
       return {
@@ -122,7 +124,7 @@ export class JarvisRuntime {
   }
 
   private async summarizeDiff(workspace: WorkspaceConfig): Promise<JarvisResponse> {
-    const summary = await getDiffSummary(workspace.rootPath);
+    const summary = await this.cache.getDiffSummary(workspace);
 
     if (summary.changedFiles === 0) {
       return {
@@ -152,7 +154,7 @@ export class JarvisRuntime {
   }
 
   private async latestCiFailure(workspace: WorkspaceConfig): Promise<JarvisResponse> {
-    const summary = await getLatestCiFailure(workspace.rootPath);
+    const summary = await this.cache.getLatestCiFailure(workspace);
 
     if (summary.reason) {
       return {
@@ -239,6 +241,8 @@ export class JarvisRuntime {
       };
     }
 
+    this.cache.invalidate(workspace.rootPath);
+
     return {
       speak: optimizeSpeak('Committed staged files successfully.'),
       display: `Created commit: ${result.message}`,
@@ -298,6 +302,8 @@ export class JarvisRuntime {
         followUpHint: result.branch,
       };
     }
+
+    this.cache.invalidate(workspace.rootPath);
 
     return {
       speak: optimizeSpeak(`Pushed ${result.branch} to ${result.remote}.`),
@@ -372,6 +378,7 @@ export class JarvisRuntime {
       }
 
       fs.rmSync(deleteTarget.absolutePath, { maxRetries: 3, retryDelay: 100 });
+      this.cache.invalidate(workspace.rootPath);
       return {
         speak: optimizeSpeak(`Deleted ${deleteTarget.relativePath}.`),
         display: `Deleted workspace file: ${deleteTarget.relativePath}.`,
@@ -439,6 +446,8 @@ export class JarvisRuntime {
         followUpHint: result.mainFile,
       };
     }
+
+    this.cache.invalidate(workspace.rootPath);
 
     return {
       speak: optimizeSpeak(`Reverted ${result.mainFile}.`),
@@ -522,6 +531,7 @@ export class JarvisRuntime {
         await this.notifyBackground?.(request.sessionId, notification);
       },
       onComplete: async (result) => {
+        this.cache.invalidate(workspace.rootPath);
         const completedSuccessfully = result.exitCode === 0 && !result.timedOut;
         const notification = buildBackgroundCommandCompletionResponse(result, activeActionId, copy, 'quick_status');
 

@@ -3,6 +3,7 @@ package com.openclaw.relay
 enum class MediaButtonAction {
     DOWN,
     UP,
+    CANDIDATE,
     UNKNOWN,
 }
 

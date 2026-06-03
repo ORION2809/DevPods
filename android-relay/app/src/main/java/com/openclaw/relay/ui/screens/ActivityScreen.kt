@@ -1,6 +1,7 @@
 package com.openclaw.relay.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,15 +37,21 @@ import androidx.compose.ui.unit.dp
 import com.openclaw.relay.RelayUiState
 import com.openclaw.relay.history.ActivityEventType
 import com.openclaw.relay.ui.components.ButtonStyle
+import com.openclaw.relay.ui.components.CardTone
 import com.openclaw.relay.ui.components.ChipStyle
 import com.openclaw.relay.ui.components.DevPodsButton
 import com.openclaw.relay.ui.components.DevPodsCard
 import com.openclaw.relay.ui.components.DevPodsChip
+import com.openclaw.relay.ui.components.DevPodsModalOverlay
 import com.openclaw.relay.ui.components.DevPodsSmallButton
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun ActivityScreen(
@@ -47,38 +64,35 @@ fun ActivityScreen(
     diagnosticsExported: Boolean = false,
     queuedActionsSent: Boolean = false,
     showApprovalDetail: Boolean = false,
+    onDismissApprovalDetail: () -> Unit = {},
+    onShowApprovalDetail: () -> Unit = {},
 ) {
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item { Spacer(modifier = Modifier.height(8.dp)) }
+    Box(modifier = modifier.fillMaxSize()) {
+        // Activity feed — always rendered underneath
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = DevPodsSpacing.screenX),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item { Spacer(modifier = Modifier.height(8.dp)) }
 
-        item {
-            Text(
-                text = "Activity",
-                style = MaterialTheme.typography.headlineSmall,
-                color = DevPodsColor.Ink,
-            )
-        }
+            item {
+                Text(
+                    text = "Activity",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+            }
 
-        if (state.pendingApprovalRequest != null) {
-            if (showApprovalDetail) {
-                item {
-                    ApprovalDetailSheet(
-                        state = state,
-                        onApprove = onApprove,
-                        onReject = onReject,
-                    )
-                }
-            } else {
+            if (state.pendingApprovalRequest != null) {
                 item {
                     ApprovalPendingCard(
                         state = state,
                         onApprove = onApprove,
                         onReject = onReject,
+                        onExpand = onShowApprovalDetail,
                     )
                 }
                 item {
@@ -87,36 +101,47 @@ fun ActivityScreen(
                 item {
                     TimelineCard(state)
                 }
+            } else {
+                item {
+                    EmptyApprovalsCard()
+                }
             }
-        } else {
-            item {
-                EmptyApprovalsCard()
+
+            if (queuedActionsSent) {
+                item {
+                    QueuedActionsSentCard(onDismiss = onDismissQueued)
+                }
             }
+
+            if (diagnosticsExported) {
+                item {
+                    DiagnosticsExportedCard(onDismiss = onDismissDiagnostics)
+                }
+            }
+
+            if (state.activityHistory.isNotEmpty()) {
+                item {
+                    ActivityHistoryCard(entries = state.activityHistory)
+                }
+            } else {
+                item {
+                    NoRecentActivityCard()
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(8.dp)) }
         }
 
-        if (queuedActionsSent) {
-            item {
-                QueuedActionsSentCard(onDismiss = onDismissQueued)
+        // Approval detail modal overlay
+        if (showApprovalDetail && state.pendingApprovalRequest != null) {
+            DevPodsModalOverlay(onDismiss = onDismissApprovalDetail) {
+                ApprovalDetailSheet(
+                    state = state,
+                    onApprove = onApprove,
+                    onReject = onReject,
+                )
             }
         }
-
-        if (diagnosticsExported) {
-            item {
-                DiagnosticsExportedCard(onDismiss = onDismissDiagnostics)
-            }
-        }
-
-        if (state.activityHistory.isNotEmpty()) {
-            item {
-                ActivityHistoryCard(entries = state.activityHistory)
-            }
-        } else {
-            item {
-                NoRecentActivityCard()
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
     }
 }
 
@@ -125,6 +150,7 @@ private fun ApprovalPendingCard(
     state: RelayUiState,
     onApprove: () -> Unit,
     onReject: () -> Unit,
+    onExpand: () -> Unit = {},
 ) {
     val request = state.pendingApprovalRequest
     val summary = state.pendingApprovalSummary ?: "Action requires approval"
@@ -132,6 +158,10 @@ private fun ApprovalPendingCard(
 
     DevPodsCard(
         accentColor = if (isHardApproval) DevPodsColor.Red else DevPodsColor.Amber,
+        tone = if (isHardApproval) CardTone.Danger else CardTone.Normal,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onExpand),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -144,6 +174,7 @@ private fun ApprovalPendingCard(
                 text = "Review requested action",
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = summary,
@@ -151,6 +182,7 @@ private fun ApprovalPendingCard(
                 color = DevPodsColor.Muted,
             )
             Row(
+                modifier = Modifier.semantics { contentDescription = "Approve or reject the request" },
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DevPodsButton(
@@ -180,6 +212,10 @@ private fun ApprovalDetailSheet(
 
     DevPodsCard(
         accentColor = if (isHardApproval) DevPodsColor.Red else DevPodsColor.Amber,
+        tone = if (isHardApproval) CardTone.Danger else CardTone.Modal,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = DevPodsSpacing.screenX),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -205,10 +241,11 @@ private fun ApprovalDetailSheet(
                 style = MaterialTheme.typography.headlineSmall,
                 color = DevPodsColor.Ink,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
 
             Text(
-                text = "This action requires your explicit confirmation before it can proceed.",
+                text = "This will push the current branch to the configured remote. It may publish code outside this machine.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = DevPodsColor.Muted,
                 textAlign = TextAlign.Center,
@@ -247,7 +284,7 @@ private fun ApprovalDetailSheet(
                     color = DevPodsColor.Ink,
                 )
                 Text(
-                    text = "This will execute on your workspace and may change files or trigger deployments.",
+                    text = "Remote repository receives your branch updates.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = DevPodsColor.Muted,
                 )
@@ -271,6 +308,7 @@ private fun ApprovalDetailSheet(
             }
 
             Row(
+                modifier = Modifier.semantics { contentDescription = "Approve or reject the request" },
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DevPodsButton(
@@ -330,6 +368,7 @@ private fun ConversationCard(
                 text = "Conversation",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             if (state.lastTranscript.isNotBlank()) {
                 Text(
@@ -368,6 +407,7 @@ private fun TimelineCard(
                 text = "Timeline",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "Wake received \u2192 Listening started \u2192 Transcript captured \u2192 Approval requested at $timeText",
@@ -402,10 +442,11 @@ private fun EmptyApprovalsCard() {
                 ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "\u2713",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = DevPodsColor.Teal,
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = DevPodsColor.Teal,
+                    modifier = Modifier.size(48.dp),
                 )
             }
             Text(
@@ -413,6 +454,7 @@ private fun EmptyApprovalsCard() {
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "When DevPods needs your confirmation, the request appears here and on Home.",
@@ -461,6 +503,7 @@ private fun QueuedActionsSentCard(
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "Your pending commands reached the desktop bridge. Risky actions will still ask for approval.",
@@ -514,6 +557,7 @@ private fun DiagnosticsExportedCard(
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "Redacted support report shared successfully. You can review the payload anytime before sending.",
@@ -544,29 +588,43 @@ private fun ActivityHistoryCard(
                 text = "History",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 entries.reversed().forEach { entry ->
-                    val label = when (entry.type) {
-                        ActivityEventType.WAKE -> "\u2713 Wake"
-                        ActivityEventType.TRANSCRIPT -> "\u2713 Speech"
-                        ActivityEventType.APPROVAL_REQUESTED -> "\u26A0 Approval requested"
-                        ActivityEventType.APPROVAL_APPROVED -> "\u2713 Approved"
-                        ActivityEventType.APPROVAL_REJECTED -> "\u2717 Rejected"
-                        ActivityEventType.APPROVAL_EXPIRED -> "\u23F0 Expired"
-                        ActivityEventType.QUEUED -> "\u23F3 Queued"
-                        ActivityEventType.RETRIED -> "\u27F3 Retried"
-                        ActivityEventType.DISCARDED -> "\u2717 Discarded"
-                        ActivityEventType.SETUP_COMPLETED -> "\u2713 Setup complete"
-                        ActivityEventType.ERROR -> "\u26A0 Error"
+                    val (icon, tint, label) = when (entry.type) {
+                        ActivityEventType.WAKE -> Triple(Icons.Default.Check, DevPodsColor.Teal, "Wake")
+                        ActivityEventType.TRANSCRIPT -> Triple(Icons.Default.Check, DevPodsColor.Teal, "Speech")
+                        ActivityEventType.APPROVAL_REQUESTED -> Triple(Icons.Default.ErrorOutline, DevPodsColor.Amber, "Approval requested")
+                        ActivityEventType.APPROVAL_APPROVED -> Triple(Icons.Default.CheckCircle, DevPodsColor.Teal, "Approved")
+                        ActivityEventType.APPROVAL_REJECTED -> Triple(Icons.Default.Close, DevPodsColor.Red, "Rejected")
+                        ActivityEventType.APPROVAL_EXPIRED -> Triple(Icons.Default.Timer, DevPodsColor.Amber, "Expired")
+                        ActivityEventType.QUEUED -> Triple(Icons.Default.History, DevPodsColor.Muted, "Queued")
+                        ActivityEventType.RETRIED -> Triple(Icons.Default.Refresh, DevPodsColor.Blue, "Retried")
+                        ActivityEventType.DISCARDED -> Triple(Icons.Default.Close, DevPodsColor.Red, "Discarded")
+                        ActivityEventType.SETUP_COMPLETED -> Triple(Icons.Default.CheckCircle, DevPodsColor.Teal, "Setup complete")
+                        ActivityEventType.ERROR -> Triple(Icons.Default.ErrorOutline, DevPodsColor.Red, "Error")
+                        ActivityEventType.ROUTE_SETTLED -> Triple(Icons.Default.CheckCircle, DevPodsColor.Teal, "Route ready")
+                        ActivityEventType.WRONG_MIC_SUSPECTED -> Triple(Icons.Default.ErrorOutline, DevPodsColor.Amber, "Wrong mic")
                     }
-                    Text(
-                        text = "$label: ${entry.summary}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = DevPodsColor.Muted,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = "$label: ${entry.summary}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = DevPodsColor.Muted,
+                        )
+                    }
                 }
             }
         }
@@ -588,6 +646,7 @@ private fun NoRecentActivityCard() {
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "Wake DevPods or tap Push-to-talk. Your transcript, spoken reply, and timeline will appear here.",

@@ -10,5 +10,14 @@
                 <action android:name="com.openclaw.relay.debug.RELAY_ACTION" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".DebugProofRunnerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.openclaw.relay.action.RUN_PROOF" />
+                <action android:name="com.openclaw.relay.action.EXPORT_PROOF" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -41,11 +41,13 @@ data class DeviceCapabilityEntry(
     val ttsInterruption: CapabilityStatus,
     val notes: String = "",
     val observedAtMs: Long = System.currentTimeMillis(),
+    val calibrationProfileId: String? = null,
 )
 
 @Serializable
 enum class CapabilityStatus {
     PROVEN,
+    FALLBACK_PROVEN,
     OBSERVED,
     UNSUPPORTED,
     UNPROVEN,

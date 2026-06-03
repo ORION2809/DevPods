@@ -74,43 +74,82 @@ class AndroidMediaSessionProvider(
     @Suppress("UnsafeOptInUsageError")
     fun mediaSession(): MediaSession? = mediaSession
 
-    private val tapDetector = MediaButtonTapDetector { gestureType ->
-        val event = when (gestureType) {
-            GestureType.SINGLE_PRESS -> EarbudSignalEvent.WakeGesture(
-                providerId = providerId,
-                deviceId = null,
-                gestureType = GestureType.SINGLE_PRESS,
-                confidence = SignalConfidence.OBSERVED,
+    @Volatile
+    private var lastKeyCode: String? = null
+    @Volatile
+    private var lastKeyAction: String? = null
+
+    private val tapDetector = MediaButtonTapDetector(
+        onGesture = { gestureType, timing ->
+            val event = when (gestureType) {
+                GestureType.SINGLE_PRESS -> EarbudSignalEvent.WakeGesture(
+                    providerId = providerId,
+                    deviceId = null,
+                    gestureType = GestureType.SINGLE_PRESS,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                    confidence = SignalConfidence.OBSERVED,
+                    pressDurationMs = timing.pressDurationMs,
+                    interTapIntervalMs = timing.interTapIntervalMs,
+                )
+                GestureType.DOUBLE_PRESS -> EarbudSignalEvent.InterruptGesture(
+                    providerId = providerId,
+                    deviceId = null,
+                    gestureType = GestureType.DOUBLE_PRESS,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                    confidence = SignalConfidence.OBSERVED,
+                    pressDurationMs = timing.pressDurationMs,
+                    interTapIntervalMs = timing.interTapIntervalMs,
+                )
+                GestureType.TRIPLE_PRESS -> EarbudSignalEvent.ApprovalGesture(
+                    providerId = providerId,
+                    deviceId = null,
+                    approved = true,
+                    gestureType = GestureType.TRIPLE_PRESS,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                    pressDurationMs = timing.pressDurationMs,
+                    interTapIntervalMs = timing.interTapIntervalMs,
+                )
+                GestureType.LONG_PRESS -> EarbudSignalEvent.WakeGesture(
+                    providerId = providerId,
+                    deviceId = null,
+                    gestureType = GestureType.LONG_PRESS,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                    confidence = SignalConfidence.OBSERVED,
+                    pressDurationMs = timing.pressDurationMs,
+                    interTapIntervalMs = timing.interTapIntervalMs,
+                )
+                else -> EarbudSignalEvent.WakeGesture(
+                    providerId = providerId,
+                    deviceId = null,
+                    gestureType = gestureType,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                    confidence = SignalConfidence.OBSERVED,
+                    pressDurationMs = timing.pressDurationMs,
+                    interTapIntervalMs = timing.interTapIntervalMs,
+                )
+            }
+            Log.i(TAG, "Media button $gestureType (key=$lastKeyCode)")
+            markGestureObserved(gestureType)
+            _events.trySend(event)
+        },
+        onCandidate = { gestureType ->
+            Log.d(TAG, "Media button candidate started (key=$lastKeyCode)")
+            _events.trySend(
+                EarbudSignalEvent.InputCandidateStarted(
+                    providerId = providerId,
+                    deviceId = null,
+                    gestureType = gestureType,
+                    keyCode = lastKeyCode,
+                    keyAction = lastKeyAction,
+                )
             )
-            GestureType.DOUBLE_PRESS -> EarbudSignalEvent.InterruptGesture(
-                providerId = providerId,
-                deviceId = null,
-                gestureType = GestureType.DOUBLE_PRESS,
-                confidence = SignalConfidence.OBSERVED,
-            )
-            GestureType.TRIPLE_PRESS -> EarbudSignalEvent.ApprovalGesture(
-                providerId = providerId,
-                deviceId = null,
-                approved = true,
-                gestureType = GestureType.TRIPLE_PRESS,
-            )
-            GestureType.LONG_PRESS -> EarbudSignalEvent.WakeGesture(
-                providerId = providerId,
-                deviceId = null,
-                gestureType = GestureType.LONG_PRESS,
-                confidence = SignalConfidence.OBSERVED,
-            )
-            else -> EarbudSignalEvent.WakeGesture(
-                providerId = providerId,
-                deviceId = null,
-                gestureType = gestureType,
-                confidence = SignalConfidence.OBSERVED,
-            )
-        }
-        Log.i(TAG, "Media button $gestureType")
-        markGestureObserved(gestureType)
-        _events.trySend(event)
-    }
+        },
+    )
 
     private fun markGestureObserved(gestureType: GestureType) {
         val current = _capabilityProfile.value
@@ -177,6 +216,10 @@ class AndroidMediaSessionProvider(
                         KeyEvent.ACTION_UP -> MediaButtonAction.UP
                         else -> MediaButtonAction.UNKNOWN
                     }
+                    val keyCodeLabel = keyCodeToLabel(keyEvent.keyCode)
+                    val actionLabel = action.name.lowercase()
+                    lastKeyCode = keyCodeLabel
+                    lastKeyAction = actionLabel
                     val receivedAtMs = System.currentTimeMillis()
                     val baseTelemetry = MediaButtonDiagnostics.normalize(
                         keyCode = keyEvent.keyCode,
@@ -190,6 +233,13 @@ class AndroidMediaSessionProvider(
                     if (!isWakeMediaButtonKey(keyEvent.keyCode)) {
                         RelayStateStore.recordMediaButtonEvent(baseTelemetry.copy(accepted = false))
                         return super.onMediaButtonEvent(session, controllerInfo, intent)
+                    }
+
+                    // Apply calibration-derived timing thresholds if a profile exists
+                    val calibrationProfile = RelayStateStore.state.value.calibrationProfile
+                    if (calibrationProfile != null) {
+                        tapDetector.longPressThresholdMs = calibrationProfile.longPressThresholdMs
+                        tapDetector.multiTapWindowMs = calibrationProfile.multiTapWindowMs
                     }
 
                     when (keyEvent.action) {
@@ -216,6 +266,8 @@ class AndroidMediaSessionProvider(
                                             providerId = providerId,
                                             deviceId = null,
                                             gestureType = GestureType.DOUBLE_PRESS,
+                                            keyCode = keyCodeToLabel(KeyEvent.KEYCODE_MEDIA_NEXT),
+                                            keyAction = actionLabel,
                                             confidence = SignalConfidence.OBSERVED,
                                         )
                                     )
@@ -228,6 +280,8 @@ class AndroidMediaSessionProvider(
                                             deviceId = null,
                                             approved = true,
                                             gestureType = GestureType.TRIPLE_PRESS,
+                                            keyCode = keyCodeToLabel(KeyEvent.KEYCODE_MEDIA_PREVIOUS),
+                                            keyAction = actionLabel,
                                         )
                                     )
                                 }
@@ -324,6 +378,18 @@ class AndroidMediaSessionProvider(
             KeyEvent.KEYCODE_MEDIA_STOP,
             -> true
             else -> false
+        }
+    }
+
+    private fun keyCodeToLabel(keyCode: Int): String {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_HEADSETHOOK -> "headsethook"
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "media_play_pause"
+            KeyEvent.KEYCODE_MEDIA_PLAY -> "media_play"
+            KeyEvent.KEYCODE_MEDIA_NEXT -> "media_next"
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> "media_previous"
+            KeyEvent.KEYCODE_MEDIA_STOP -> "media_stop"
+            else -> "key_$keyCode"
         }
     }
 }

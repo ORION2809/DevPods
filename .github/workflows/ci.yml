@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  BETA_MODE: ${{ contains(github.ref, 'beta') || contains(github.ref, 'release') }}
+
 jobs:
   bridge:
     name: Bridge (TypeScript)
@@ -31,11 +34,61 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Audit (informational)
-        run: npm audit || true
+      - name: Audit dependencies
+        run: npm audit
 
       - name: Audit allowlist enforcement
         run: npm run audit:allowlist
+
+      - name: Secret scan
+        run: |
+          grep -rEi '(ghp_|sk-[a-zA-Z0-9]{48}|AIza[0-9A-Za-z_-]{35})' --include='*.ts' --include='*.js' --include='*.json' --include='*.kt' src/ android-relay/app/src/ config/ || true
+          if grep -rEi 'ghp_[a-zA-Z0-9]{36}' --include='*.ts' --include='*.js' --include='*.json' --include='*.kt' src/ android-relay/app/src/ config/; then
+            echo "Potential GitHub token found in source"
+            exit 1
+          fi
+
+      - name: Validate supported devices matrix schema
+        run: |
+          node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('docs/supported-devices-matrix.json', 'utf8'));
+            if (!data.version || !Array.isArray(data.providers) || !Array.isArray(data.fallbackChain)) {
+              console.error('Invalid matrix schema');
+              process.exit(1);
+            }
+            const validStatuses = new Set(['proven', 'observed', 'fallback_proven', 'implemented_unverified', 'scaffolded', 'unsupported']);
+            for (const provider of data.providers) {
+              if (!provider.providerId || !provider.providerLabel) {
+                console.error('Missing provider fields');
+                process.exit(1);
+              }
+              for (const [feature, status] of Object.entries(provider.features || {})) {
+                if (!validStatuses.has(status)) {
+                  console.error('Invalid status for feature ' + feature + ': ' + status);
+                  process.exit(1);
+                }
+              }
+            }
+            console.log('Matrix schema valid');
+          "
+
+      - name: Validate proof-run artifacts (dev mode)
+        run: |
+          if [ -d "artifacts/proof-runs" ] && [ "$(find artifacts/proof-runs -name '*.json' -not -name 'TEMPLATE*' | wc -l)" -gt 0 ]; then
+            npx tsx scripts/validate-proof-run.ts artifacts/proof-runs/
+          else
+            echo "No proof-run artifacts — skipping in dev mode"
+          fi
+
+      - name: Validate proof-run artifacts (beta/release mode)
+        if: env.BETA_MODE == 'true'
+        run: |
+          npx tsx scripts/validate-proof-run.ts artifacts/proof-runs/ --require-tier T4_PHYSICAL_ANDROID_EARBUDS --max-age-days 7
+        continue-on-error: false
+
+      - name: License scan
+        run: npx tsx scripts/license-scan.ts
 
   android:
     name: Android Relay
@@ -66,6 +119,10 @@ jobs:
       - name: Run lint
         working-directory: android-relay
         run: ./gradlew :app:lintDebug
+
+      - name: Verify sherpa native libs
+        working-directory: android-relay
+        run: ./gradlew :sherpa-runtime:verifySherpaNativeLibs
 
   windows-package:
     name: Windows Bridge Package

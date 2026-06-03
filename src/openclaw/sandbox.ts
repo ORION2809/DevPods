@@ -336,6 +336,9 @@ function seedSandboxRuntimeDependency(
   rewritePackageJson?: (packageJson: Record<string, unknown>) => Record<string, unknown>,
 ): void {
   const packageRoot = resolveInstalledPackageRoot(packageName);
+  if (packageRoot === null) {
+    return;
+  }
   const targetRoot = path.join(stateDir, 'plugin-runtime-deps', 'node_modules', packageName);
 
   if (fs.existsSync(targetRoot)) {
@@ -354,26 +357,30 @@ function seedSandboxRuntimeDependency(
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(rewritePackageJson(parsedPackageJson), null, 2)}\n`, 'utf8');
 }
 
-function resolveInstalledPackageRoot(packageName: string): string {
+function resolveInstalledPackageRoot(packageName: string): string | null {
   const directPackageRoot = path.resolve(process.cwd(), 'node_modules', ...packageName.split('/'));
   if (fs.existsSync(path.join(directPackageRoot, 'package.json'))) {
     return directPackageRoot;
   }
 
-  let currentDir = path.dirname(require.resolve(packageName));
+  try {
+    let currentDir = path.dirname(require.resolve(packageName));
 
-  for (;;) {
-    const packageJsonPath = path.join(currentDir, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      return currentDir;
+    for (;;) {
+      const packageJsonPath = path.join(currentDir, 'package.json');
+      if (fs.existsSync(packageJsonPath)) {
+        return currentDir;
+      }
+
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) {
+        return null;
+      }
+
+      currentDir = parentDir;
     }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      throw new Error(`Could not resolve installed package root for ${packageName}.`);
-    }
-
-    currentDir = parentDir;
+  } catch {
+    return null;
   }
 }
 

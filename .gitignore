@@ -28,4 +28,5 @@ android-relay/*.png
 android-relay/lint-output.txt
 external/
 vendor-sources/
-
+/*.png
+/tmp/

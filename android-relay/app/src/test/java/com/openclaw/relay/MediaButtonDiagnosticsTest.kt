@@ -110,4 +110,62 @@ class MediaButtonDiagnosticsTest {
         assertFalse(snapshot.isComplete)
         assertEquals(listOf("retry_queue", "stop_relay"), snapshot.missingControls)
     }
+
+    @Test
+    fun `debouncer treats rapid candidate presses as duplicates`() {
+        val debouncer = MediaButtonEventDebouncer(minDuplicateIntervalMs = 120L)
+
+        val first = debouncer.accepts(
+            keyCode = MediaButtonDiagnostics.KEYCODE_MEDIA_PLAY_PAUSE,
+            action = MediaButtonAction.DOWN,
+            receivedAtMs = 1_000L,
+        )
+        // A candidate press 80ms later should still be debounced
+        val rapidCandidate = debouncer.accepts(
+            keyCode = MediaButtonDiagnostics.KEYCODE_MEDIA_PLAY_PAUSE,
+            action = MediaButtonAction.DOWN,
+            receivedAtMs = 1_080L,
+        )
+        // But a later intentional tap is accepted
+        val intentionalLaterTap = debouncer.accepts(
+            keyCode = MediaButtonDiagnostics.KEYCODE_MEDIA_PLAY_PAUSE,
+            action = MediaButtonAction.DOWN,
+            receivedAtMs = 1_250L,
+        )
+
+        assertTrue(first)
+        assertFalse(rapidCandidate)
+        assertTrue(intentionalLaterTap)
+    }
+
+    @Test
+    fun `normalizer marks candidate key down as accepted`() {
+        val telemetry = MediaButtonDiagnostics.normalize(
+            keyCode = MediaButtonDiagnostics.KEYCODE_MEDIA_PLAY_PAUSE,
+            action = MediaButtonAction.DOWN,
+            repeatCount = 0,
+            receivedAtMs = 1_000L,
+        )
+        assertTrue(telemetry.accepted)
+        assertEquals("MEDIA_PLAY_PAUSE", telemetry.keyLabel)
+        assertEquals("defer_to_tap_detector", telemetry.mapping)
+    }
+
+    @Test
+    fun `speculative route preparation does not count as audio capture`() {
+        // Documented invariant: route preparation on InputCandidateStarted must not
+        // trigger STT or send bridge commands. This test asserts the telemetry shape
+        // that distinguishes route preparation from actual capture.
+        val routePrepareTelemetry = MediaButtonDiagnostics.normalize(
+            keyCode = MediaButtonDiagnostics.KEYCODE_MEDIA_PLAY_PAUSE,
+            action = MediaButtonAction.DOWN,
+            repeatCount = 0,
+            receivedAtMs = 2_000L,
+            routeState = AudioRouteProofState.ROUTE_BLUETOOTH_REQUESTED,
+            serviceRunning = true,
+        )
+        assertTrue(routePrepareTelemetry.accepted)
+        assertEquals(AudioRouteProofState.ROUTE_BLUETOOTH_REQUESTED, routePrepareTelemetry.routeState)
+        assertTrue(routePrepareTelemetry.serviceRunning)
+    }
 }

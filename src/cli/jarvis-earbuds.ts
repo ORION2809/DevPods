@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline/promises';
 import { createBridgeServer } from '../bridge/server';
 import { createBridgeRuntime } from '../bridge/runtime';
+import { isReleaseSafeMdnsPairingBaseUrl, startBridgeMdnsAdvertisement } from '../bridge/mdns';
 import { buildRelayPairingPageUrl, buildRelayPairingUri, resolveRelayPairingBaseUrl } from '../pairing/uri';
 import type { Notifier } from '../bridge/speaker';
 import { resolveOpenClawRewritePolicy } from '../openclaw/client';
@@ -76,6 +77,8 @@ async function main(): Promise<void> {
         ...(relayToken ? { relayToken } : {}),
         ...(pairingBaseUrl ? { pairingBaseUrl } : {}),
       });
+      let mdnsAdvertisement: ReturnType<typeof startBridgeMdnsAdvertisement> | undefined;
+
       server.listen(port, host, () => {
         if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
           process.stderr.write('Warning: bridge traffic is cleartext over HTTP. Use only on a trusted LAN.\n');
@@ -97,6 +100,25 @@ async function main(): Promise<void> {
             'Relay pairing URI unavailable for the current bridge binding. Use --pairing-base-url with a LAN-reachable bridge URL to pair the Android relay.\n',
           );
         }
+
+        if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+          if (isReleaseSafeMdnsPairingBaseUrl(pairingBaseUrl)) {
+            mdnsAdvertisement = startBridgeMdnsAdvertisement({
+              port,
+              pairingBaseUrl: pairingBaseUrl ?? undefined,
+              version: '1.0.0',
+            });
+            process.stdout.write(`mDNS advertisement started: ${mdnsAdvertisement.service.name}\n`);
+          } else {
+            process.stdout.write(
+              'mDNS advertisement skipped: release discovery requires --pairing-base-url with an HTTPS URL.\n',
+            );
+          }
+        }
+      });
+
+      server.on('close', () => {
+        mdnsAdvertisement?.stop();
       });
       return;
     }
@@ -122,13 +144,17 @@ async function main(): Promise<void> {
         ...runtimeOptions,
         notifier: silentNotifier,
       });
-      const event = loadFixtureEvent(fixture, {
-        utterance: values.utterance,
-        sessionId: values['session-id'],
-        workspace: values.workspace,
-      });
-      const result = await runtime.handleEvent(event);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      try {
+        const event = loadFixtureEvent(fixture, {
+          utterance: values.utterance,
+          sessionId: values['session-id'],
+          workspace: values.workspace,
+        });
+        const result = await runtime.handleEvent(event);
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      } finally {
+        runtime.dispose();
+      }
       return;
     }
     case 'send': {
@@ -192,13 +218,17 @@ async function main(): Promise<void> {
         ...runtimeOptions,
         notifier: silentNotifier,
       });
-      const event = loadFixtureEvent('triple_tap_right', {
-        utterance,
-        sessionId: values['session-id'],
-        workspace: values.workspace,
-      });
-      const result = await runtime.handleEvent(event);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      try {
+        const event = loadFixtureEvent('triple_tap_right', {
+          utterance,
+          sessionId: values['session-id'],
+          workspace: values.workspace,
+        });
+        const result = await runtime.handleEvent(event);
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      } finally {
+        runtime.dispose();
+      }
       return;
     }
     case 'say': {
@@ -245,7 +275,7 @@ async function main(): Promise<void> {
     }
     default:
       process.stdout.write(
-        'Usage: devpods <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path] [--pairing-base-url http://bridge-host:4545]\n',
+        'Usage: devpods <start|local|send|listen|say|health> [--brain local|openclaw] [--workspaces-config path] [--pairing-base-url https://bridge-host.example]\n',
       );
   }
 }

@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DevPods Proof Run",
+  "description": "Schema for a validated proof run. T4 requires 20 sessions and physicalBluetoothProven=true. Simulation tiers require 3+ sessions.",
+  "type": "object",
+  "required": ["proofRunId", "startedAt", "proofTier", "phoneModel", "androidVersion", "earbudModel", "providerId", "wakePath", "inputPath", "outputPath", "engineId", "bridgeMode", "routeProofSource", "physicalBluetoothProven", "sessions"],
+  "properties": {
+    "proofRunId": {
+      "type": "string",
+      "description": "Unique proof run identifier: phone-android-earbuds-timestamp"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "proofTier": {
+      "type": "string",
+      "enum": ["T1_EMULATOR_SYNTHETIC", "T1_PCM_INJECTION", "T2_EMULATOR_HOST_AUDIO", "T3_EMULATOR_SIMULATED_BLUETOOTH", "T4_PHYSICAL_ANDROID_EARBUDS"]
+    },
+    "phoneModel": {
+      "type": "string"
+    },
+    "androidVersion": {
+      "type": "string"
+    },
+    "earbudModel": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "wakePath": {
+      "type": "string",
+      "enum": ["direct_hardware", "android_media_session", "assistant_entry", "push_to_talk"]
+    },
+    "inputPath": {
+      "type": "string",
+      "enum": ["synthetic_text", "synthetic_pcm", "emulator_host_mic", "android_bluetooth_headset", "android_phone_mic"]
+    },
+    "outputPath": {
+      "type": "string",
+      "enum": ["fake_tts", "android_tts_speaker", "android_tts_bluetooth", "host_audio"]
+    },
+    "engineId": {
+      "type": "string",
+      "enum": ["platform_speech_recognizer", "sherpa_onnx", "none", "synthetic"]
+    },
+    "bridgeMode": {
+      "type": "string",
+      "enum": ["local", "openclaw"]
+    },
+    "routeProofSource": {
+      "type": "string",
+      "enum": ["synthetic", "host_audio", "netsim_bluetooth", "physical_bluetooth"]
+    },
+    "physicalBluetoothProven": {
+      "type": "boolean",
+      "description": "True only for T4 physical Bluetooth proof. Simulation tiers must set false."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PASSED", "FAILED", "template"]
+    },
+    "blockingFailures": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "sessions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sessionNumber", "wakeDetected", "sttProducedTranscript", "bridgeReached", "ttsPlayed"],
+        "properties": {
+          "sessionNumber": { "type": "integer", "minimum": 1 },
+          "wakeDetected": { "type": "boolean" },
+          "wakeProvider": { "type": "string" },
+          "routeSettleMs": { "type": "number" },
+          "routeState": { "type": "string" },
+          "sttProducedTranscript": { "type": "boolean" },
+          "sttEndpointReason": { "type": "string" },
+          "bridgeReached": { "type": "boolean" },
+          "bridgeLatencyMs": { "type": "number" },
+          "ttsPlayed": { "type": "boolean" },
+          "ttsStartDelayMs": { "type": "number" },
+          "bargeInTested": { "type": "boolean" },
+          "bargeInTargetMet": { "type": "boolean" },
+          "bargeInLatencyMs": { "type": "number" },
+          "wrongMicSuspected": { "type": "boolean" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "interruptionTests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["testNumber", "targetMet"],
+        "properties": {
+          "testNumber": { "type": "integer" },
+          "targetMet": { "type": "boolean" },
+          "ttsStopLatencyMs": { "type": "number" },
+          "listeningStartLatencyMs": { "type": "number" }
+        }
+      }
+    },
+    "appVersion": { "type": "string" },
+    "bridgeVersion": { "type": "string" },
+    "appBuildHash": { "type": "string" },
+    "bridgeBuildHash": { "type": "string" },
+    "redactionMetadata": {
+      "type": "object",
+      "properties": {
+        "rawAudioStored": { "type": "boolean" },
+        "transcriptsRedacted": { "type": "boolean" },
+        "personalDataRemoved": { "type": "boolean" }
+      }
+    },
+    "diagnosticExportHash": {
+      "type": "string",
+      "description": "SHA-256 of the redacted diagnostic export from this run"
+    },
+    "calibrationProfileId": {
+      "type": "string",
+      "description": "ID of the calibration profile used for this proof run"
+    },
+    "calibratedGestureUsed": {
+      "type": "string",
+      "enum": ["SINGLE_PRESS", "DOUBLE_PRESS", "TRIPLE_PRESS", "LONG_PRESS"],
+      "description": "The calibrated gesture that triggered the wake for this proof run"
+    },
+    "matchedCalibratedAction": {
+      "type": "string",
+      "enum": ["WAKE_AND_LISTEN", "INTERRUPT", "APPROVE", "REJECT", "NONE"],
+      "description": "The action mapped to the calibrated gesture used"
+    },
+    "sameProfileProof": {
+      "type": "boolean",
+      "description": "True when STT, TTS, and barge-in were all proven on the same calibration profile"
+    }
+  }
+}

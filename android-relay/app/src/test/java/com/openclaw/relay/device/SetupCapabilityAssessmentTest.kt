@@ -29,7 +29,7 @@ class SetupCapabilityAssessmentTest {
     }
 
     @Test
-    fun `android media session wake proves direct hardware wake`() {
+    fun `android media session wake is fallback proven not direct hardware`() {
         val entry = buildCapabilityEntryFromSetup(
             SetupCapabilityAssessment(
                 deviceModel = "Generic Bluetooth",
@@ -45,12 +45,12 @@ class SetupCapabilityAssessmentTest {
             )
         )
 
-        assertEquals(CapabilityStatus.PROVEN, entry.wakeGesture)
+        assertEquals(CapabilityStatus.FALLBACK_PROVEN, entry.wakeGesture)
         assertEquals(listOf("android_media_session"), entry.providersObserved)
     }
 
     @Test
-    fun `assistant fallback wake stays observed instead of proven direct wake`() {
+    fun `assistant fallback wake is fallback proven`() {
         val entry = buildCapabilityEntryFromSetup(
             SetupCapabilityAssessment(
                 deviceModel = "Generic Bluetooth",
@@ -66,7 +66,7 @@ class SetupCapabilityAssessmentTest {
             )
         )
 
-        assertEquals(CapabilityStatus.OBSERVED, entry.wakeGesture)
+        assertEquals(CapabilityStatus.FALLBACK_PROVEN, entry.wakeGesture)
         assertEquals(listOf("assistant_entry"), entry.providersObserved)
     }
 

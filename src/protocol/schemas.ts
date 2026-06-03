@@ -19,6 +19,8 @@ export const earbudEventNameSchema = z.enum([
   'android_cancel',
   'android_autonomy_continue',
   'android_autonomy_interrupt',
+  'android_learning_confirm',
+  'android_learning_reject',
 ]);
 
 export const requestEventSchema = z.enum([
@@ -31,6 +33,8 @@ export const requestEventSchema = z.enum([
   'cancel',
   'pause',
   'resume',
+  'learning_prompt_confirm',
+  'learning_prompt_reject',
 ]);
 
 export const approvalActionSchema = z.enum(['approve', 'reject', 'cancel', 'expire']);
@@ -97,7 +101,16 @@ export const earbudEventSchema = z.object({
   utterance: z.string().min(1).max(400).optional(),
   pendingActionId: z.string().min(1).optional(),
   hardwareContext: hardwareContextSchema.optional(),
+  protocolVersion: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1).optional(),
 });
+
+export const androidRelayEventSchema = earbudEventSchema.extend({
+  protocolVersion: z.string().min(1, 'protocolVersion is required for Android relay events'),
+  idempotencyKey: z.string().min(1, 'idempotencyKey is required for Android relay events'),
+});
+
+export const SUPPORTED_PROTOCOL_VERSIONS = ['1', '1.0'] as const;
 
 export const bridgeRequestSchema = z.object({
   source: z.string().min(1),
@@ -211,6 +224,147 @@ export const auditRecordSchema = z.object({
   hardwareContext: hardwareContextSchema.nullable().default(null),
 });
 
+export const outboxEventKindSchema = z.enum([
+  'completion_soft_ping',
+  'completion_full_report',
+  'reminder_due',
+  'workspace_nudge',
+  'approval_pending',
+  'learning_prompt',
+  'badge_update',
+]);
+
+export const outboxEventSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  createdAtMs: z.number().int().nonnegative(),
+  expiresAtMs: z.number().int().nonnegative(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']),
+  kind: outboxEventKindSchema,
+  summary: z.string().min(1),
+  detail: z.string().optional(),
+  actionId: z.string().optional(),
+});
+
+export const outboxPollResponseSchema = z.object({
+  events: z.array(outboxEventSchema),
+  cursor: z.string().optional(),
+});
+
+export const outboxAckSchema = z.object({
+  eventId: z.string().min(1),
+  sessionId: z.string().min(1),
+});
+
+export const notificationStyleSchema = z.enum([
+  'aggressive',
+  'soft',
+  'silent_with_badge',
+]);
+
+export const notificationPreferenceSchema = z.object({
+  sessionId: z.string().min(1),
+  style: notificationStyleSchema.default('soft'),
+  badgeEnabled: z.boolean().default(true),
+  mutedKinds: z.array(outboxEventKindSchema).default([]),
+  softPingTtsEnabled: z.boolean().default(true),
+  nudgeTtsEnabled: z.boolean().default(true),
+  reminderTtsEnabled: z.boolean().default(true),
+  showSensitiveInNotifications: z.boolean().default(false),
+  wearApprovalEnabled: z.boolean().default(true),
+  updatedAtMs: z.number().int().nonnegative().default(() => Date.now()),
+});
+
+export const reminderSchema = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  summary: z.string().min(1),
+  createdAtMs: z.number().int().nonnegative(),
+  dueAtMs: z.number().int().nonnegative(),
+  ackedAtMs: z.number().int().nonnegative().optional(),
+  recurring: z.enum(['none', 'daily', 'weekly']).default('none'),
+});
+
+export const reminderListResponseSchema = z.object({
+  reminders: z.array(reminderSchema),
+});
+
+export const reminderCreateRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  summary: z.string().min(1),
+  dueAtMs: z.number().int().nonnegative(),
+  recurring: z.enum(['none', 'daily', 'weekly']).default('none'),
+});
+
+export const learnedPhraseSchema = z.object({
+  phrase: z.string().min(1),
+  intent: z.string().min(1),
+  confirmationCount: z.number().int().nonnegative().default(0),
+  createdAtMs: z.number().int().nonnegative().default(() => Date.now()),
+  lastConfirmedAtMs: z.number().int().nonnegative().optional(),
+});
+
+export const voiceHabitSnapshotSchema = z.object({
+  phrases: z.array(learnedPhraseSchema),
+});
+
+export const confirmLearningRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  phrase: z.string().min(1),
+  intent: z.string().min(1),
+});
+
+export const workspaceSnapshotSchema = z.object({
+  workspaceId: z.string().min(1),
+  repoDetected: z.boolean(),
+  branch: z.string().nullable(),
+  changedFiles: z.number().int().nonnegative(),
+  testsRunning: z.boolean(),
+  lastCommitAtMs: z.number().int().nonnegative().nullable(),
+  ciStatus: z.enum(['unknown', 'green', 'red', 'no_ci']).default('unknown'),
+  lastCiFailureAtMs: z.number().int().nonnegative().nullable(),
+  polledAtMs: z.number().int().nonnegative().default(() => Date.now()),
+});
+
+export const prefetchRequestSchema = z.object({
+  kinds: z.array(z.enum(['workspace_status', 'diff_stat', 'ci_snapshot'])),
+  idempotencyKey: z.string().min(1),
+});
+
+export const streamFrameSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('started') }),
+  z.object({ type: z.literal('speak_delta'), delta: z.string() }),
+  z.object({ type: z.literal('display_delta'), delta: z.string() }),
+  z.object({ type: z.literal('approval_request'), approvalRequest: approvalRequestSchema }),
+  z.object({ type: z.literal('final_response'), response: jarvisResponseSchema }),
+  z.object({ type: z.literal('error'), error: z.string(), category: z.string().optional() }),
+  z.object({ type: z.literal('done') }),
+]);
+
+export const nudgeTypeSchema = z.enum([
+  'uncommitted_files',
+  'stale_branch',
+  'ci_red',
+  'tests_failing',
+  'ready_to_push',
+]);
+
+export const nudgeThresholdSchema = z.object({
+  type: nudgeTypeSchema,
+  changedFilesMin: z.number().int().nonnegative().default(1),
+  staleBranchHours: z.number().int().nonnegative().default(24),
+  consecutiveTestFailures: z.number().int().nonnegative().default(2),
+  ciRedHours: z.number().int().nonnegative().default(1),
+});
+
+export const nudgePolicySchema = z.object({
+  sessionId: z.string().min(1),
+  enabled: z.boolean().default(true),
+  mutedTypes: z.array(nudgeTypeSchema).default([]),
+  thresholds: z.array(nudgeThresholdSchema).default([]),
+  updatedAtMs: z.number().int().nonnegative().default(() => Date.now()),
+});
+
 export type HardwareContext = z.infer<typeof hardwareContextSchema>;
 export type EarbudEvent = z.infer<typeof earbudEventSchema>;
 export type BridgeRequest = z.infer<typeof bridgeRequestSchema>;
@@ -221,3 +375,20 @@ export type RiskPolicy = z.infer<typeof riskPolicySchema>;
 export type AuditRecord = z.infer<typeof auditRecordSchema>;
 export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 export type AutonomyInstruction = z.infer<typeof autonomyInstructionSchema>;
+export type OutboxEvent = z.infer<typeof outboxEventSchema>;
+export type OutboxEventKind = z.infer<typeof outboxEventKindSchema>;
+export type OutboxPollResponse = z.infer<typeof outboxPollResponseSchema>;
+export type OutboxAck = z.infer<typeof outboxAckSchema>;
+export type NotificationStyle = z.infer<typeof notificationStyleSchema>;
+export type NotificationPreference = z.infer<typeof notificationPreferenceSchema>;
+export type Reminder = z.infer<typeof reminderSchema>;
+export type ReminderListResponse = z.infer<typeof reminderListResponseSchema>;
+export type ReminderCreateRequest = z.infer<typeof reminderCreateRequestSchema>;
+export type LearnedPhrase = z.infer<typeof learnedPhraseSchema>;
+export type VoiceHabitSnapshot = z.infer<typeof voiceHabitSnapshotSchema>;
+export type ConfirmLearningRequest = z.infer<typeof confirmLearningRequestSchema>;
+export type NudgeType = z.infer<typeof nudgeTypeSchema>;
+export type NudgeThreshold = z.infer<typeof nudgeThresholdSchema>;
+export type NudgePolicy = z.infer<typeof nudgePolicySchema>;
+export type PrefetchRequest = z.infer<typeof prefetchRequestSchema>;
+export type StreamFrame = z.infer<typeof streamFrameSchema>;

@@ -130,6 +130,8 @@ describe('fake event to response', () => {
         event: 'android_status_shortcut',
         timestamp: Date.now(),
         profile: 'default',
+        protocolVersion: '1',
+        idempotencyKey: 'android_status-android_status_shortcut-status-' + Date.now(),
       }),
     });
 
@@ -189,6 +191,8 @@ describe('fake event to response', () => {
           event: 'android_push_to_talk',
           timestamp: Date.now(),
           utterance: 'open file app.ts',
+          protocolVersion: '1',
+          idempotencyKey: 'android_open_file-android_push_to_talk-none-' + Date.now(),
         }),
       });
 
@@ -213,6 +217,8 @@ describe('fake event to response', () => {
           event: 'android_cancel',
           timestamp: Date.now(),
           pendingActionId: promptPayload.actionId,
+          protocolVersion: '1',
+          idempotencyKey: 'android_open_file-android_cancel-' + promptPayload.actionId + '-' + Date.now(),
         }),
       });
 
@@ -236,6 +242,8 @@ describe('fake event to response', () => {
           event: 'android_push_to_talk',
           timestamp: Date.now(),
           utterance: 'open file app.ts',
+          protocolVersion: '1',
+          idempotencyKey: 'android_open_file-android_push_to_talk-none-' + Date.now(),
         }),
       });
 
@@ -258,6 +266,8 @@ describe('fake event to response', () => {
           event: 'android_approve',
           timestamp: Date.now(),
           pendingActionId: secondPromptPayload.actionId,
+          protocolVersion: '1',
+          idempotencyKey: 'android_open_file-android_approve-' + secondPromptPayload.actionId + '-' + Date.now(),
         }),
       });
 
@@ -318,6 +328,8 @@ describe('fake event to response', () => {
           device: 'both_buds',
           event: 'android_status_shortcut',
           timestamp: Date.now(),
+          protocolVersion: '1',
+          idempotencyKey: 'android_auth-android_status_shortcut-status-' + Date.now(),
         }),
       });
 
@@ -336,6 +348,8 @@ describe('fake event to response', () => {
           device: 'both_buds',
           event: 'android_status_shortcut',
           timestamp: Date.now(),
+          protocolVersion: '1',
+          idempotencyKey: 'android_auth-android_status_shortcut-status-' + Date.now(),
         }),
       });
 

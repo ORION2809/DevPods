@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,8 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
 import com.openclaw.relay.ui.theme.PillShape
 
 sealed class ChipStyle(
@@ -60,8 +64,12 @@ fun DevPodsChip(
 ) {
     Row(
         modifier = modifier
+            .heightIn(min = DevPodsSpacing.chipMinHeight)
             .clip(PillShape)
             .background(style.background)
+            .semantics {
+                contentDescription = text
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

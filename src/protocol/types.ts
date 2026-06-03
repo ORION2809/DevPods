@@ -10,6 +10,7 @@ export const intentNames = [
   'deploy',
   'delete',
   'revert',
+  'create_reminder',
 ] as const;
 
 export type IntentName = (typeof intentNames)[number];
@@ -19,6 +20,7 @@ export const immediateIntents = new Set<IntentName>([
   'summarize_diff',
   'latest_ci_failure',
   'create_commit_message',
+  'create_reminder',
 ]);
 
 export const approvalAliases: Record<string, string> = {

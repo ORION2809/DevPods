@@ -1,6 +1,7 @@
 package com.openclaw.relay.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import com.openclaw.relay.RelayUiState
 import java.util.Locale
 import com.openclaw.relay.ui.components.ButtonStyle
@@ -36,6 +41,8 @@ import com.openclaw.relay.ui.components.QueueMeter
 import com.openclaw.relay.ui.components.Waveform
 import com.openclaw.relay.ui.components.liveCountdownRemaining
 import com.openclaw.relay.ui.theme.DevPodsColor
+import com.openclaw.relay.ui.theme.DevPodsSpacing
+import com.openclaw.relay.ui.theme.PillShape
 
 @Composable
 fun HomeScreen(
@@ -55,7 +62,7 @@ fun HomeScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = DevPodsSpacing.screenX),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { Spacer(modifier = Modifier.height(8.dp)) }
@@ -77,7 +84,7 @@ fun HomeScreen(
             state.bridgeQueueState.queuedCount > 0 || state.isAwaitingBridgeResponse -> {
                 item { BridgeQueueSection(state, onRetryNow, onDiscard) }
             }
-            state.isServiceRunning && state.bridgeStatus.startsWith("Healthy", ignoreCase = true) -> {
+            state.speakNowReadiness.readiness != com.openclaw.relay.signal.SpeakNowReadiness.BLOCKED -> {
                 item { ReadySection(state, onListenNow, onCheckBridge, onViewActivity) }
             }
             else -> {
@@ -95,48 +102,66 @@ private fun HomeOnboardingSection(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "Talk to your workspace through ordinary earbuds.",
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                text = "Pair the desktop bridge, verify your earbuds, then speak short developer commands hands-free.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        // Start here — structured path card with step pills
+        DevPodsCard(accentColor = DevPodsColor.Teal) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Start here",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "First launch moves from onboarding into pairing, then setup, then Home. Recovery states branch without sending the user into Dev mode.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    StartHereStepPill(number = 1, label = "Pair")
+                    StartHereStepPill(number = 2, label = "Run")
+                    StartHereStepPill(number = 3, label = "Ready")
+                    StartHereStepPill(number = 4, label = "Recover")
+                }
+            }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            FeatureCard(
-                title = "Pair",
-                body = "Scan bridge QR",
-                accentColor = DevPodsColor.Teal,
-                modifier = Modifier.weight(1f),
-            )
-            FeatureCard(
-                title = "Verify",
-                body = "Prove wake and STT",
-                accentColor = DevPodsColor.Amber,
-                modifier = Modifier.weight(1f),
-            )
-            FeatureCard(
-                title = "Approve",
-                body = "Risky actions pause",
-                accentColor = DevPodsColor.Blue,
-                modifier = Modifier.weight(1f),
-            )
+        // Recovery guidance card
+        DevPodsCard(accentColor = DevPodsColor.Amber) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "If anything blocks",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Show the repair card exactly where the user is: queue retry on Home, approval sheet in Activity, bridge management in Device, settings in Help.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+            }
+        }
+
+        // Daily return path card
+        DevPodsCard(accentColor = DevPodsColor.Blue) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Daily return path",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = DevPodsColor.Ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    text = "Returning users land on Home with one state, one primary action, and a session preview. No raw bridge console unless Dev mode is enabled.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DevPodsColor.Muted,
+                )
+            }
         }
 
         DevPodsButton(
@@ -144,6 +169,39 @@ private fun HomeOnboardingSection(
             onClick = onPairBridge,
             modifier = Modifier.fillMaxWidth(),
             style = ButtonStyle.Primary,
+        )
+    }
+}
+
+@Composable
+private fun StartHereStepPill(
+    number: Int,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .background(DevPodsColor.TealSoft, PillShape)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .background(DevPodsColor.Teal, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = number.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = DevPodsColor.White,
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = DevPodsColor.Teal,
         )
     }
 }
@@ -199,29 +257,33 @@ private fun ReadySection(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val readiness = state.speakNowReadiness.readiness
                         DevPodsChip(
-                            text = "Ready",
-                            style = ChipStyle.Success,
+                            text = when (readiness) {
+                                com.openclaw.relay.signal.SpeakNowReadiness.SPEAK_NOW -> "Ready"
+                                com.openclaw.relay.signal.SpeakNowReadiness.DEGRADED -> "Degraded"
+                                com.openclaw.relay.signal.SpeakNowReadiness.BLOCKED -> "Blocked"
+                            },
+                            style = when (readiness) {
+                                com.openclaw.relay.signal.SpeakNowReadiness.SPEAK_NOW -> ChipStyle.Success
+                                com.openclaw.relay.signal.SpeakNowReadiness.DEGRADED -> ChipStyle.Warning
+                                com.openclaw.relay.signal.SpeakNowReadiness.BLOCKED -> ChipStyle.Error
+                            },
                         )
-                        // Waveform positioned to the right in hero
-                        Box(
-                            modifier = Modifier
-                                .width(80.dp)
-                                .padding(start = 12.dp),
-                        ) {
-                            Waveform(
-                                isAnimating = false,
-                                modifier = Modifier.width(80.dp),
-                            )
-                        }
+                        // Waveform positioned at top-right in hero
+                        Waveform(
+                            isAnimating = false,
+                            modifier = Modifier.width(80.dp),
+                        )
                     }
                     Text(
-                        text = "Ready to listen",
+                        text = state.speakNowReadiness.userFacingMessage,
                         style = MaterialTheme.typography.headlineSmall,
                         color = DevPodsColor.White,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Text(
                         text = "Tap your earbuds or use push-to-talk. Risky workspace actions will ask before continuing.",
@@ -317,6 +379,7 @@ private fun LatestSessionCard(
                 text = "Latest session",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             if (state.lastTranscript.isNotBlank()) {
                 Text(
@@ -397,6 +460,7 @@ private fun ApprovalPendingSection(
                 text = summary,
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = if (isExpired) {
@@ -442,6 +506,7 @@ private fun ConversationSection(
                 text = "Conversation",
                 style = MaterialTheme.typography.titleMedium,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             if (state.lastTranscript.isNotBlank()) {
                 Text(
@@ -489,6 +554,7 @@ private fun AutonomySection(
                 text = autonomy.summary,
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             if (autonomy.nextStep != null) {
                 Text(
@@ -560,6 +626,7 @@ private fun BridgeQueueSection(
                 text = "${queue.queuedCount} command${if (queue.queuedCount == 1) "" else "s"} queued",
                 style = MaterialTheme.typography.titleLarge,
                 color = DevPodsColor.Ink,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = "DevPods saved your latest requests because the desktop bridge is unreachable.",

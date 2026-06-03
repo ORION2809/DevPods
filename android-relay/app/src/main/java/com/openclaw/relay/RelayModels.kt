@@ -14,6 +14,21 @@ data class RelayConfig(
     val offlineSpeechModelPath: String = "",
     val offlineSpeechModelVersion: String = "",
     val offlineSpeechModelSha256: String = "",
+    val sherpaRuntimeEnabled: Boolean = false,
+    val sherpaVadDiagnosticsEnabled: Boolean = false,
+    val sherpaSttExperimentalEnabled: Boolean = false,
+    val sherpaModelDownloadsEnabled: Boolean = false,
+    // Latency optimization feature flags
+    val fastWakeEnabled: Boolean = false,
+    val ttsWarmKeepaliveEnabled: Boolean = false,
+    val speechRecognizerPrewarmEnabled: Boolean = false,
+    val preferredProviderOrderingEnabled: Boolean = false,
+    val speculativeRoutePrepareEnabled: Boolean = false,
+    val bridgePrefetchOnWakeEnabled: Boolean = false,
+    val eventStreamingEnabled: Boolean = false,
+    val latencySummaryExportEnabled: Boolean = false,
+    val remoteModeEnabled: Boolean = false,
+    val benchmarkDiagnosticsEnabled: Boolean = false,
 )
 
 fun RelayConfig.isPaired(): Boolean = bridgeBaseUrl.trim().isNotBlank()
@@ -33,6 +48,8 @@ data class RelayWakeSignal(
     val controllerPackage: String? = null,
     val receivedAtMs: Long = System.currentTimeMillis(),
     val hardwareContext: com.openclaw.relay.signal.HardwareContext? = null,
+    val calibratedGestureType: com.openclaw.relay.signal.GestureType? = null,
+    val matchedCalibratedAction: String? = null,
 )
 
 data class RelayAudioRouteSnapshot(
@@ -69,6 +86,7 @@ data class RelayUiState(
     val isImportingPairing: Boolean = false,
     val isServiceRunning: Boolean = false,
     val isListening: Boolean = false,
+    val speechSessionState: SpeechSessionState = SpeechSessionState.IDLE,
     val isAwaitingBridgeResponse: Boolean = false,
     val isSpeaking: Boolean = false,
     val lastHeadsetEvent: String? = null,
@@ -109,10 +127,72 @@ data class RelayUiState(
     val providerHealth: List<com.openclaw.relay.signal.ProviderHealthUi> = emptyList(),
     val preferredProviderId: String? = null,
     val voiceDiagnostics: VoiceDiagnosticsSnapshot = VoiceDiagnosticsSnapshot(),
+    val calibrationProfile: com.openclaw.relay.calibration.EarbudCalibrationProfile? = null,
+    val calibrationSession: com.openclaw.relay.calibration.CalibrationSessionState? = null,
+    val calibrationRequired: Boolean = false,
+    val recentUnmatchedSignals: List<UnmatchedSignalRecord> = emptyList(),
+    val recentMatchedSignals: List<MatchedSignalRecord> = emptyList(),
+    val runtimeMissCount: Int = 0,
+    val outboxEvents: List<BridgeOutboxEvent> = emptyList(),
+    val outboxCursor: String = "",
+    val outboxBadgeCount: Int = 0,
+    val notificationPreference: NotificationPreference? = null,
+    val reminders: List<Reminder> = emptyList(),
+    val activeLearningPrompt: BridgeOutboxEvent? = null,
+    val discoveredBridges: List<DiscoveredBridge> = emptyList(),
+    val isDiscovering: Boolean = false,
+    val quickStartEnabled: Boolean = false,
+    val nudgePolicy: NudgePolicy? = null,
+    val learnedPhrases: List<LearnedPhrase> = emptyList(),
+    val benchmarkSession: SherpaBenchmarkUiState? = null,
+    val currentSpeechEngineId: String? = null,
+    val lastBenchmarkSample: CommandBenchmarkSample? = null,
 ) {
     val pendingApprovalSummary: String?
         get() = pendingApprovalRequest?.summary
+
+    val speakNowReadiness: com.openclaw.relay.signal.SpeakNowReadinessDetail
+        get() = com.openclaw.relay.signal.computeSpeakNowReadiness(
+            isServiceRunning = isServiceRunning,
+            setupPhase = setupPhase,
+            listenReadiness = listenReadiness,
+            listenReadinessMessage = listenReadinessMessage,
+            speechRecognitionAvailable = speechRecognitionAvailable,
+            ttsReady = ttsReady,
+            bridgeStatus = bridgeStatus,
+            lastBridgeHealth = lastBridgeHealth,
+            currentDeviceState = currentDeviceState,
+            audioRoute = audioRoute,
+            voiceProofRun = voiceDiagnostics.voiceProofRun,
+            phoneMicFallback = phoneMicFallback,
+            calibrationRequired = calibrationRequired,
+            calibrationProfile = calibrationProfile,
+        )
 }
+
+@Serializable
+data class UnmatchedSignalRecord(
+    val providerId: String,
+    val gestureType: String,
+    val keyCode: String? = null,
+    val timestampMs: Long = System.currentTimeMillis(),
+    val reason: String,
+)
+
+data class MatchedSignalRecord(
+    val providerId: String,
+    val gestureType: String,
+    val action: String,
+    val timestampMs: Long = System.currentTimeMillis(),
+)
+
+data class DiscoveredBridge(
+    val name: String,
+    val host: String,
+    val port: Int,
+    val pairingBaseUrl: String? = null,
+    val version: String? = null,
+)
 
 @Serializable
 data class BridgeApprovalRequest(
@@ -155,7 +235,13 @@ data class BridgeHealthResponse(
     val bridgeVersion: String = "1.0.0",
     val protocolVersion: Int = 1,
     val minAppVersion: String = BuildConfig.VERSION_NAME,
+    val features: List<String> = emptyList(),
 )
+
+@Serializable
+const val RELAY_PROTOCOL_VERSION: String = "1.0"
+
+const val EXPECTED_PROTOCOL_VERSION: Int = 1
 
 @Serializable
 data class RelayBridgeEvent(
@@ -169,6 +255,8 @@ data class RelayBridgeEvent(
     val pendingActionId: String? = null,
     val profile: String? = "default",
     val hardwareContext: com.openclaw.relay.signal.HardwareContext? = null,
+    val protocolVersion: String = RELAY_PROTOCOL_VERSION,
+    val idempotencyKey: String? = null,
 )
 
 data class TimedBridgeResult<T>(
@@ -176,13 +264,105 @@ data class TimedBridgeResult<T>(
     val durationMs: Long,
 )
 
+@Serializable
+data class BridgeOutboxEvent(
+    val id: String,
+    val sessionId: String,
+    val createdAtMs: Long,
+    val expiresAtMs: Long,
+    val priority: String = "normal",
+    val kind: String,
+    val summary: String,
+    val detail: String? = null,
+    val actionId: String? = null,
+)
+
+@Serializable
+data class BridgeOutboxPollResponse(
+    val events: List<BridgeOutboxEvent>,
+    val cursor: String? = null,
+)
+
+@Serializable
+data class NotificationPreference(
+    val sessionId: String,
+    val style: String = "soft",
+    val badgeEnabled: Boolean = true,
+    val mutedKinds: List<String> = emptyList(),
+    val softPingTtsEnabled: Boolean = true,
+    val nudgeTtsEnabled: Boolean = true,
+    val reminderTtsEnabled: Boolean = true,
+    val showSensitiveInNotifications: Boolean = false,
+    val wearApprovalEnabled: Boolean = true,
+    val updatedAtMs: Long = System.currentTimeMillis(),
+)
+
+@Serializable
+data class Reminder(
+    val id: String,
+    val sessionId: String,
+    val summary: String,
+    val createdAtMs: Long,
+    val dueAtMs: Long,
+    val ackedAtMs: Long? = null,
+    val recurring: String = "none",
+)
+
+@Serializable
+data class ReminderListResponse(
+    val reminders: List<Reminder> = emptyList(),
+)
+
+@Serializable
+data class LearnedPhrase(
+    val phrase: String,
+    val intent: String,
+    val confirmationCount: Int = 0,
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val lastConfirmedAtMs: Long? = null,
+)
+
+@Serializable
+data class VoiceHabitSnapshot(
+    val phrases: List<LearnedPhrase> = emptyList(),
+)
+
+@Serializable
+data class NudgeThreshold(
+    val type: String,
+    val changedFilesMin: Int = 1,
+    val staleBranchHours: Int = 24,
+    val consecutiveTestFailures: Int = 2,
+    val ciRedHours: Int = 1,
+)
+
+@Serializable
+data class NudgePolicy(
+    val sessionId: String,
+    val enabled: Boolean = true,
+    val mutedTypes: List<String> = emptyList(),
+    val thresholds: List<NudgeThreshold> = emptyList(),
+    val updatedAtMs: Long = System.currentTimeMillis(),
+)
+
+enum class SherpaPromotionState {
+    HIDDEN,
+    DEVELOPER_DIAGNOSTIC,
+    EXPERIMENTAL,
+    PRODUCTION,
+}
+
 enum class SetupPhase {
     NOT_STARTED,
     PAIRING,
+    QUICK_START,
     DEVICE_PROBE,
+    CALIBRATION,
+    GESTURE_MAPPING,
     GESTURE_TEST,
     STT_TEST,
-    COMPLETE,
+    COMPLETE_PROVEN,
+    COMPLETE_DEGRADED,
 }
 
 data class SetupTestState(
@@ -192,4 +372,16 @@ data class SetupTestState(
     val providerName: String = "",
     val confidence: String = "",
     val mappedEvent: String = "",
+)
+
+data class SherpaBenchmarkUiState(
+    val isRunning: Boolean = false,
+    val currentCommandIndex: Int = 0,
+    val totalCommands: Int = 0,
+    val currentCommand: String = "",
+    val currentEngine: CommandBenchmarkEngine = CommandBenchmarkEngine.SHERPA_STT,
+    val samplesCollected: Int = 0,
+    val statusLabel: String = "",
+    val lastTranscript: String = "",
+    val lastSampleLatencyMs: Long? = null,
 )

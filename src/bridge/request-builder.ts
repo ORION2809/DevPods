@@ -42,6 +42,10 @@ function mapEvent(event: EarbudEvent): {
     case 'both_hold_cancel':
     case 'android_cancel':
       return { event: 'cancel', utterance: null, approvalAction: null };
+    case 'android_learning_confirm':
+      return { event: 'learning_prompt_confirm', utterance: event.utterance ?? null, approvalAction: null };
+    case 'android_learning_reject':
+      return { event: 'learning_prompt_reject', utterance: event.utterance ?? null, approvalAction: null };
     case 'remove_one_bud_pause':
       return { event: 'pause', utterance: null, approvalAction: null };
     case 'remove_both_buds_end_session':

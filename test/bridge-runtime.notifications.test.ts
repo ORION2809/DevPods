@@ -271,6 +271,7 @@ describe('bridge runtime notifications', () => {
       event: 'android_push_to_talk',
       timestamp: Date.now(),
       utterance: 'run the tests',
+      idempotencyKey: 'android_background_notify-android_push_to_talk-none-' + Date.now(),
     });
 
     expect(approvalPrompt.requiresApproval).toBe(true);
@@ -283,6 +284,7 @@ describe('bridge runtime notifications', () => {
       event: 'android_approve',
       timestamp: Date.now(),
       pendingActionId: approvalPrompt.actionId ?? undefined,
+      idempotencyKey: 'android_background_notify-android_approve-' + (approvalPrompt.actionId ?? 'none') + '-' + Date.now(),
     });
 
     expect(startResponse.status).toBe('running');

@@ -3,9 +3,13 @@ package com.openclaw.relay.device
 import com.openclaw.relay.signal.EarbudSignalEvent
 
 private val directHardwareWakeProviders = setOf(
-    "android_media_session",
     "librepods_airpods",
     "custom_firmware_ble",
+)
+
+private val fallbackWakeProviders = setOf(
+    "android_media_session",
+    "assistant_entry",
 )
 
 data class SetupCapabilityAssessment(
@@ -39,6 +43,7 @@ fun buildCapabilityEntryFromSetup(assessment: SetupCapabilityAssessment): Device
 
     val wakeGesture = when {
         observedWakeProviders.any(::isDirectHardwareWakeProvider) -> CapabilityStatus.PROVEN
+        observedWakeProviders.any { it in fallbackWakeProviders } -> CapabilityStatus.FALLBACK_PROVEN
         observedWakeProviders.isNotEmpty() -> CapabilityStatus.OBSERVED
         else -> CapabilityStatus.UNPROVEN
     }
@@ -115,4 +120,56 @@ private fun buildSetupNotes(
         notes += "No approval or reject gesture was observed during setup."
     }
     return notes.joinToString(" ")
+}
+
+/**
+ * Update a capability entry to reflect calibration profile results.
+ *
+ * Gesture proven status is promoted only when the calibration profile has:
+ * - A proven gesture mapped to the corresponding action
+ * - Successful route proof (for wake/interrupt)
+ */
+fun updateCapabilityEntryFromCalibration(
+    entry: DeviceCapabilityEntry,
+    profile: com.openclaw.relay.calibration.EarbudCalibrationProfile,
+): DeviceCapabilityEntry {
+    if (!profile.isReadyForRuntime()) {
+        // Profile is not runtime-ready; do not promote capabilities
+        return entry.copy(
+            calibrationProfileId = profile.profileId,
+            notes = entry.notes + " Calibration profile exists but is not runtime-ready.",
+        )
+    }
+
+    val provenGestures = profile.provenGestures()
+    val actionMap = profile.gestureActionMap
+
+    val hasWakeGesture = provenGestures.any {
+        val action = actionMap.actionFor(it.requestedGesture)
+        action == com.openclaw.relay.calibration.GestureAction.WAKE_AND_LISTEN
+    }
+    val hasInterruptGesture = provenGestures.any {
+        val action = actionMap.actionFor(it.requestedGesture)
+        action == com.openclaw.relay.calibration.GestureAction.INTERRUPT
+    }
+    val hasApprovalGesture = provenGestures.any {
+        val action = actionMap.actionFor(it.requestedGesture)
+        action == com.openclaw.relay.calibration.GestureAction.APPROVE ||
+            action == com.openclaw.relay.calibration.GestureAction.REJECT
+    }
+
+    val wakeGesture = if (hasWakeGesture) CapabilityStatus.PROVEN else entry.wakeGesture
+    val interruptGesture = if (hasInterruptGesture) CapabilityStatus.PROVEN else entry.interruptGesture
+    val approveRejectGesture = if (hasApprovalGesture) CapabilityStatus.PROVEN else entry.approveRejectGesture
+
+    return entry.copy(
+        wakeGesture = wakeGesture,
+        interruptGesture = interruptGesture,
+        approveRejectGesture = approveRejectGesture,
+        calibrationProfileId = profile.profileId,
+        notes = buildString {
+            append(entry.notes)
+            append(" Calibration proven: wake=$hasWakeGesture, interrupt=$hasInterruptGesture, approve=$hasApprovalGesture.")
+        },
+    )
 }

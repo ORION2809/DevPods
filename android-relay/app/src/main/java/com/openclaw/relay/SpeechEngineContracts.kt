@@ -13,6 +13,7 @@ internal data class SpeechSessionRequest(
     val sessionId: String,
     val wakeSignal: String? = null,
     val completeSilenceMs: Long = 750L,
+    val possibleCompleteSilenceMs: Long = 0L,
     val minimumLengthMs: Long = 300L,
     val preferOffline: Boolean = false,
     val onDeviceOnly: Boolean = false,
@@ -40,9 +41,14 @@ internal enum class SpeechStopReason {
 internal interface SpeechInputEngine {
     val id: String
     fun capabilities(): SpeechEngineCapabilities
+    fun prepare(request: SpeechSessionRequest): Boolean
     suspend fun start(request: SpeechSessionRequest, callbacks: SpeechCallbacks)
     suspend fun stop(reason: SpeechStopReason)
     fun destroy()
+}
+
+internal interface WarmableSpeechOutputEngine : SpeechOutputEngine {
+    suspend fun warm(): Boolean
 }
 
 internal data class VadProbeRequest(
@@ -71,6 +77,7 @@ internal object PlatformCallbackVadProbe {
 internal data class TtsRequest(
     val utteranceId: String,
     val text: String,
+    val queueMode: Int = android.speech.tts.TextToSpeech.QUEUE_FLUSH,
 )
 
 internal data class TtsCallbacks(

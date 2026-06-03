@@ -14,7 +14,11 @@ sealed interface EarbudSignalEvent {
         override val deviceId: String?,
         val gestureType: GestureType,
         val budSide: BudSide? = null,
+        val keyCode: String? = null,
+        val keyAction: String? = null,
         val confidence: SignalConfidence = SignalConfidence.OBSERVED,
+        val pressDurationMs: Long? = null,
+        val interTapIntervalMs: Long? = null,
         override val timestamp: Long = System.currentTimeMillis(),
     ) : EarbudSignalEvent
 
@@ -24,7 +28,11 @@ sealed interface EarbudSignalEvent {
         override val deviceId: String?,
         val gestureType: GestureType,
         val budSide: BudSide? = null,
+        val keyCode: String? = null,
+        val keyAction: String? = null,
         val confidence: SignalConfidence = SignalConfidence.OBSERVED,
+        val pressDurationMs: Long? = null,
+        val interTapIntervalMs: Long? = null,
         override val timestamp: Long = System.currentTimeMillis(),
     ) : EarbudSignalEvent
 
@@ -34,6 +42,10 @@ sealed interface EarbudSignalEvent {
         override val deviceId: String?,
         val approved: Boolean,
         val gestureType: GestureType,
+        val keyCode: String? = null,
+        val keyAction: String? = null,
+        val pressDurationMs: Long? = null,
+        val interTapIntervalMs: Long? = null,
         override val timestamp: Long = System.currentTimeMillis(),
     ) : EarbudSignalEvent
 
@@ -80,6 +92,16 @@ sealed interface EarbudSignalEvent {
         override val deviceId: String?,
         val frameType: String,
         val payload: String,
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : EarbudSignalEvent
+
+    @Serializable
+    data class InputCandidateStarted(
+        override val providerId: String,
+        override val deviceId: String?,
+        val gestureType: GestureType = GestureType.SINGLE_PRESS,
+        val keyCode: String? = null,
+        val keyAction: String? = null,
         override val timestamp: Long = System.currentTimeMillis(),
     ) : EarbudSignalEvent
 }

@@ -89,6 +89,48 @@ describe('buildBridgeRequest', () => {
     expect(request.hardwareContext?.deviceConfidence).toBe('proven');
   });
 
+  it('maps android_learning_confirm to learning_prompt_confirm with utterance', () => {
+    const request = buildBridgeRequest(
+      {
+        source: 'android_relay',
+        sessionId: 'android_learning',
+        workspace: 'current_repo',
+        device: 'both_buds',
+        event: 'android_learning_confirm',
+        timestamp: Date.now(),
+        utterance: 'status',
+        pendingActionId: 'intent:quick_status',
+      } satisfies EarbudEvent,
+      workspace,
+    );
+
+    expect(request.event).toBe('learning_prompt_confirm');
+    expect(request.utterance).toBe('status');
+    expect(request.pendingActionId).toBe('intent:quick_status');
+    expect(request.gesture).toBe('android_learning_confirm');
+  });
+
+  it('maps android_learning_reject to learning_prompt_reject with utterance', () => {
+    const request = buildBridgeRequest(
+      {
+        source: 'android_relay',
+        sessionId: 'android_learning',
+        workspace: 'current_repo',
+        device: 'both_buds',
+        event: 'android_learning_reject',
+        timestamp: Date.now(),
+        utterance: 'status',
+        pendingActionId: 'intent:quick_status',
+      } satisfies EarbudEvent,
+      workspace,
+    );
+
+    expect(request.event).toBe('learning_prompt_reject');
+    expect(request.utterance).toBe('status');
+    expect(request.pendingActionId).toBe('intent:quick_status');
+    expect(request.gesture).toBe('android_learning_reject');
+  });
+
   it('sets hardware context to null when not provided', () => {
     const request = buildBridgeRequest(
       {

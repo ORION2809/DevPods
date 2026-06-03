@@ -22,6 +22,17 @@ Authorization: Bearer <token>
 
 The pairing endpoints (`GET /pairing` and `POST /pairing/verify`) are intentionally readable without the relay bearer token so a new phone can fetch or open the pairing contract before it is configured locally. Only expose them on a trusted LAN.
 
+## Private Network Remote Mode
+
+DevPods is local-first. There is no cloud command relay. Remote operation is supported over private networks only:
+
+- **Same-machine LAN mode**: phone and computer on the same Wi-Fi; mDNS discovery works.
+- **Private mesh/VPN mode**: phone and computer on a private VPN or mesh network (e.g., Tailscale, WireGuard). Paste the bridge URL manually; mDNS discovery will not work.
+- **USB reverse/debug mode**: use `adb reverse tcp:4545 tcp:4545` to tunnel the bridge to the phone over USB.
+- **Release HTTPS requirements**: release builds require HTTPS for discovered bridges. For private-network use in release, you must supply a trusted certificate or use an explicit product-supported private-network tunnel mode.
+
+Discovery works on local Wi-Fi. For private VPN, paste the bridge URL in the pairing field. Release builds require HTTPS for discovered bridges.
+
 ## Endpoints
 
 ### `GET /pairing`

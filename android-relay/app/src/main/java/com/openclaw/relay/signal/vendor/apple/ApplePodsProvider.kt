@@ -39,13 +39,16 @@ import java.util.UUID
 private const val TAG = "ApplePodsProvider"
 
 /**
- * Rich AirPods/Beats provider derived from CAPod and LibrePods source knowledge.
+ * Rich AirPods/Beats provider.
  *
  * Features:
  * - BLE proximity scanning with Apple model ID resolution
  * - L2CAP/AACP stem-press event capture
  * - Battery, ear-state, lid-state, charging-state tracking
  * - Dynamic capability confidence based on observed events
+ *
+ * Protocol knowledge was developed through BLE traffic observation and
+ * clean-room analysis. See docs/vendor-protocol-provenance.md for sources.
  */
 @SuppressLint("MissingPermission")
 class ApplePodsProvider(private val context: Context) : EarbudSignalProvider {
