@@ -41,18 +41,10 @@ const buildPropertyMap = (props: Record<string, string | number | boolean>): str
   return `{${entries.join(', ')}}`;
 };
 
-/** Delete all relationships, then all nodes. Idempotent. */
+/** Delete all relationships, then all nodes. Errors propagate. */
 export const clearGraphData = async (store: GraphStore): Promise<void> => {
-  try {
-    await store.query("MATCH ()-[r:CodeRelation]->() DELETE r");
-  } catch {
-    // No relationships to delete
-  }
-  try {
-    await store.query("MATCH (n) DELETE n");
-  } catch {
-    // No nodes to delete
-  }
+  await store.query("MATCH ()-[r:CodeRelation]->() DELETE r");
+  await store.query("MATCH (n) DELETE n");
 };
 
 const DEFAULT_NODE_BATCH_SIZE = 50;

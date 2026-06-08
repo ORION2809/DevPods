@@ -65,11 +65,11 @@ describe('ingestWorkspace', () => {
       ORDER BY fi.name, s.name
     `);
     expect(rels.length).toBe(2);
-    expect(rels[0].file).toBe('user.ts');
-    expect(rels[0].symbol).toBe('User');
+    expect((rels[0] as any).file).toBe('user.ts');
+    expect((rels[0] as any).symbol).toBe('User');
     expect((rels[0] as any).labels).toContain('Class');
-    expect(rels[1].file).toBe('utils.ts');
-    expect(rels[1].symbol).toBe('add');
+    expect((rels[1] as any).file).toBe('utils.ts');
+    expect((rels[1] as any).symbol).toBe('add');
     expect((rels[1] as any).labels).toContain('Function');
   });
 

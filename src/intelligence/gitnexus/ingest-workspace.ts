@@ -11,6 +11,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { GraphStore } from './graph/graph-store';
 import {
@@ -58,6 +59,14 @@ const buildStructure = (
   const nodes: GraphNodeBatch[] = [];
   const relationships: GraphRelationshipBatch[] = [];
   const folderIds = new Map<string, string>();
+  const seenRels = new Set<string>();
+
+  const addRel = (rel: GraphRelationshipBatch): void => {
+    const key = `${rel.sourceId}\t${rel.targetId}\t${rel.type}`;
+    if (seenRels.has(key)) return;
+    seenRels.add(key);
+    relationships.push(rel);
+  };
 
   const getFolderId = (folderPath: string): string => {
     let id = folderIds.get(folderPath);
@@ -98,7 +107,7 @@ const buildStructure = (
         currentPath = currentPath ? `${currentPath}/${part}` : part;
         const folderId = getFolderId(currentPath);
         if (parentId) {
-          relationships.push({
+          addRel({
             sourceLabel: 'Folder',
             sourceId: parentId,
             targetLabel: 'Folder',
@@ -112,7 +121,7 @@ const buildStructure = (
       }
       // Final folder → file
       if (parentId) {
-        relationships.push({
+        addRel({
           sourceLabel: 'Folder',
           sourceId: parentId,
           targetLabel: 'File',
@@ -226,6 +235,11 @@ export const ingestWorkspace = async (
 
   emit(options, 'Creating schema...', 22);
   await store.createSchema();
+
+  // Remove manifest BEFORE clearing so a crash mid-run leaves the workspace
+  // as `not_indexed` rather than `ready` with an empty graph.
+  const { manifestPath } = layer.resolveWorkspaceDbPath(workspaceId);
+  try { await fs.unlink(manifestPath); } catch { /* manifest may not exist */ }
 
   emit(options, 'Clearing previous index...', 20);
   await clearGraphData(store);
