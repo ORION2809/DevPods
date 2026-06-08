@@ -110,9 +110,11 @@ export function createBridgeServer(options: BridgeServerOptions = {}): {
         return;
       }
 
-      if (request.method === 'GET' && request.url === '/health') {
+      if (request.method === 'GET' && request.url?.startsWith('/health')) {
         response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify(await buildHealthPayload(runtime, options)));
+        const healthUrl = new URL(request.url, `http://${request.headers.host ?? 'localhost'}`);
+        const workspaceId = healthUrl.searchParams.get('workspaceId') ?? undefined;
+        response.end(JSON.stringify(await buildHealthPayload(runtime, options, workspaceId)));
         return;
       }
 
@@ -603,7 +605,7 @@ interface BridgeHealthPayload {
   workspaceSnapshotCacheEnabled: boolean;
 }
 
-async function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions): Promise<BridgeHealthPayload> {
+async function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions, workspaceId?: string): Promise<BridgeHealthPayload> {
   const brainMode = options.brainMode ?? 'local';
   const openclawTransport = options.openclaw
     ? options.openclaw.transport ?? 'http'
@@ -613,7 +615,7 @@ async function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerO
     : null;
   const openclawRewriteHealth = runtime.getOpenClawHealthSnapshot();
   const healthStatus = runtime.getHealthStatus();
-  const capabilities = await runtime.getCapabilitySnapshot();
+  const capabilities = await runtime.getCapabilitySnapshot(workspaceId);
 
   return {
     ok: true,

@@ -67,6 +67,11 @@ export interface JarvisResponseDraft {
  * The Intelligence Layer never executes commands, approves actions,
  * writes files, or bypasses policy. It only answers questions about
  * code structure, impact, and change detection.
+ *
+ * CONTRACT LOCKED — W4 Checkpoint (2026-06-08)
+ * GitNexus harvest must implement this interface without changing it.
+ * New query types may be added as optional methods; existing signatures
+ * are frozen until a major version bump.
  */
 export interface IntelligenceLayer {
   readonly kind: 'stub' | 'gitnexus' | 'custom';
