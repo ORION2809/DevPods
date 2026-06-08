@@ -28,6 +28,7 @@
     "proof:pcm": "powershell -NoProfile -ExecutionPolicy Bypass -File ./simulation/android-relay/run-pcm-proof.ps1"
   },
   "dependencies": {
+    "@ladybugdb/core": "^0.16.1",
     "bonjour-service": "^1.4.0",
     "json5": "^2.2.3",
     "qrcode": "^1.5.4",

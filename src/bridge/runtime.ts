@@ -32,6 +32,7 @@ import { TierConfigStore } from '../personalization/tier-config-store';
 import { OpenClawAgentRuntime } from '../agent/openclaw-agent-runtime';
 import { AgentRuntimeDispatcher } from '../agent/agent-runtime-dispatcher';
 import { StubIntelligenceLayer } from '../intelligence/stub-intelligence-layer';
+import { GitNexusIntelligenceLayer } from '../intelligence/gitnexus';
 import type { IntelligenceLayer } from '../intelligence/intelligence-layer-contract';
 import { createReadOnlyIntelligenceLayer } from '../intelligence/read-only-guard';
 
@@ -365,7 +366,9 @@ export function createBridgeRuntime(options: BridgeRuntimeOptions = {}): BridgeR
   );
   const isAgentTier = (options.tier ?? 'core') === 'agent' || (options.tier ?? 'core') === 'intelligence';
   const isIntelligenceTier = (options.tier ?? 'core') === 'intelligence';
-  const rawIntelligenceLayer = isIntelligenceTier ? new StubIntelligenceLayer('not_indexed') : undefined;
+  const rawIntelligenceLayer = isIntelligenceTier
+    ? new GitNexusIntelligenceLayer({ indexBasePath: path.resolve(process.cwd(), 'runtime-data/intelligence') })
+    : undefined;
   const intelligenceLayer = rawIntelligenceLayer ? createReadOnlyIntelligenceLayer(rawIntelligenceLayer) : undefined;
   const agentRuntime = isAgentTier ? new OpenClawAgentRuntime({ simulateProgress: false, intelligenceLayer }) : null;
   const agentRuntimeDispatcher = agentRuntime
