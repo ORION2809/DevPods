@@ -174,6 +174,7 @@ CREATE NODE TABLE \`Property\` (
   filePath STRING,
   startLine INT64,
   endLine INT64,
+  isExported BOOLEAN,
   content STRING,
   description STRING,
   declaredType STRING,

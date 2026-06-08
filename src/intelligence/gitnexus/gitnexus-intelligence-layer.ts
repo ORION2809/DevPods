@@ -29,6 +29,9 @@ import type {
 import type { IntelligenceIndexState } from '../../protocol/schemas';
 import { GraphStore } from './graph/graph-store';
 import { ingestWorkspace, type IngestWorkspaceOptions } from './ingest-workspace';
+import { searchSymbols } from './search/symbol-search';
+import { getSymbolContext } from './search/symbol-context';
+import { getSymbolImpact } from './search/symbol-impact';
 
 export interface GitNexusIntelligenceLayerOptions {
   /** Base directory for all intelligence indexes. Default: runtime-data/intelligence */
@@ -195,13 +198,32 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         confidence: 'low',
       };
     }
-    // Phase 3: implement hybrid BM25 + semantic search
+
+    const store = this.getStore(workspaceId);
+    const matches = await searchSymbols(store, query);
+
+    if (matches.length === 0) {
+      return {
+        symbol: query,
+        answer: `No symbols found matching "${query}".`,
+        files: [],
+        lineReferences: [],
+        confidence: 'low',
+      };
+    }
+
+    const top = matches[0];
+    const answer =
+      matches.length === 1
+        ? `${top.label} ${top.name} in ${top.filePath}:${top.startLine}`
+        : `${matches.length} matches for "${query}". Top: ${top.label} ${top.name} in ${top.filePath}:${top.startLine}`;
+
     return {
       symbol: query,
-      answer: `Intelligence query not yet implemented for "${query}".`,
-      files: [],
-      lineReferences: [],
-      confidence: 'low',
+      answer,
+      files: [...new Set(matches.map((m) => m.filePath))],
+      lineReferences: matches.map((m) => ({ file: m.filePath, line: m.startLine })),
+      confidence: top.confidence >= 0.95 ? 'high' : top.confidence >= 0.5 ? 'medium' : 'low',
     };
   }
 
@@ -218,15 +240,36 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         confidence: 'low',
       };
     }
-    // Phase 3: implement symbol context lookup
+
+    const store = this.getStore(workspaceId);
+    const ctx = await getSymbolContext(store, symbol);
+
+    if (!ctx.definition) {
+      return {
+        symbol,
+        definition: '',
+        callers: [],
+        callees: [],
+        affectedFlows: [],
+        files: [],
+        confidence: 'low',
+      };
+    }
+
+    const def = ctx.definition;
+    const flowNames = ctx.neighbours
+      .filter((n) => n.id !== def.id)
+      .slice(0, 5)
+      .map((n) => n.name);
+
     return {
       symbol,
-      definition: '',
-      callers: [],
-      callees: [],
-      affectedFlows: [],
-      files: [],
-      confidence: 'low',
+      definition: `${def.label} ${def.name} at ${def.filePath}:${def.startLine}-${def.endLine}`,
+      callers: [], // Requires call-edge extraction (Phase 3d+)
+      callees: [], // Requires call-edge extraction (Phase 3d+)
+      affectedFlows: flowNames,
+      files: [def.filePath],
+      confidence: 'high',
     };
   }
 
@@ -243,15 +286,33 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         safeToContinue: true,
       };
     }
-    // Phase 3: implement blast-radius graph traversal
+
+    const store = this.getStore(workspaceId);
+    const imp = await getSymbolImpact(store, symbol);
+
+    if (!imp.definition) {
+      return {
+        symbol,
+        directCallers: 0,
+        affectedModules: [],
+        affectedFlows: [],
+        testSuggestions: [],
+        riskLevel: 'low',
+        safeToContinue: true,
+      };
+    }
+
+    const safeToContinue = imp.riskLevel !== 'high';
+
     return {
       symbol,
-      directCallers: 0,
-      affectedModules: [],
-      affectedFlows: [],
-      testSuggestions: [],
-      riskLevel: 'low',
-      safeToContinue: true,
+      directCallers: 0, // Requires call-edge extraction (Phase 3d+)
+      affectedModules:
+        imp.neighbourCount > 0 ? [`${imp.neighbourCount} symbols in ${imp.definition.filePath}`] : [],
+      affectedFlows: [], // Requires call-edge extraction (Phase 3d+)
+      testSuggestions: imp.definition.filePath ? [`${imp.definition.filePath}`] : [],
+      riskLevel: imp.riskLevel,
+      safeToContinue,
     };
   }
 

@@ -97,18 +97,27 @@ describe('GitNexusIntelligenceLayer', () => {
     expect(tm.callSites).toEqual([]);
   });
 
-  it('read methods work when indexed (stub responses)', async () => {
+  it('read methods query real graph when indexed', async () => {
     const workspaceId = 'ws-indexed';
     const store = (layer as any).getStore(workspaceId);
     await store.init();
     await store.createSchema();
+
+    // Seed a symbol so search has something to find
+    await store.query("CREATE (f:Function {id: 'f1', name: 'handleEvent', filePath: 'src/bridge.ts', startLine: 10, endLine: 20, isExported: true})");
     await layer.writeManifest(workspaceId, 1);
 
-    const q = await layer.query('foo', workspaceId);
-    expect(q.answer).toContain('not yet implemented');
+    const q = await layer.query('handleEvent', workspaceId);
+    expect(q.answer).toContain('handleEvent');
+    expect(q.confidence).toBe('high');
 
-    const ctx = await layer.context('foo', workspaceId);
-    expect(ctx.symbol).toBe('foo');
+    const ctx = await layer.context('handleEvent', workspaceId);
+    expect(ctx.symbol).toBe('handleEvent');
+    expect(ctx.definition).toContain('Function handleEvent');
+
+    const imp = await layer.impact('handleEvent', workspaceId);
+    expect(imp.symbol).toBe('handleEvent');
+    expect(imp.riskLevel).toBe('medium'); // exported symbol with no neighbours
   });
 
   it('can index a workspace via indexWorkspace', async () => {

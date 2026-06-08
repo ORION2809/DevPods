@@ -163,9 +163,7 @@ const buildSymbols = (
         endLine: sym.endLine,
       };
 
-      if (table !== 'Property') {
-        props.isExported = sym.isExported;
-      }
+      props.isExported = sym.isExported;
 
       nodes.push({
         label: table,
