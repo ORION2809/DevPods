@@ -25,6 +25,7 @@ import { walkWorkspacePaths, readFileContents } from '../ingestion/filesystem-wa
 import { computeFileHashes, diffFileHashes } from '../ingestion/file-hash';
 import { loadWorkspaceMeta, saveWorkspaceMeta, type WorkspaceIndexMeta } from '../ingestion/workspace-meta';
 import { parseSourceFile, type ParsedSymbol } from '../ingestion/parser';
+import { extractRoutesFromFile, extractToolsFromFile } from './ingestion/route-tool-extractor';
 import type { GitNexusIntelligenceLayer } from './gitnexus-intelligence-layer';
 
 export interface IngestWorkspaceOptions {
@@ -186,6 +187,72 @@ const buildSymbols = (
   return { nodes, relationships };
 };
 
+/** Extract routes and tools from file contents. */
+const buildRoutesAndTools = (
+  filePaths: string[],
+  contents: Map<string, string>,
+): { nodes: GraphNodeBatch[]; relationships: GraphRelationshipBatch[] } => {
+  const nodes: GraphNodeBatch[] = [];
+  const relationships: GraphRelationshipBatch[] = [];
+
+  for (const filePath of filePaths) {
+    const content = contents.get(filePath);
+    if (!content) continue;
+
+    const routes = extractRoutesFromFile(filePath, content);
+    for (const route of routes) {
+      const routeId = makeId('Route', `${route.method}:${route.path}:${filePath}`);
+      nodes.push({
+        label: 'Route',
+        id: routeId,
+        properties: {
+          name: `${route.method} ${route.path}`,
+          filePath,
+          middleware: route.middleware ?? [],
+        },
+      });
+
+      const fileId = makeId('File', filePath);
+      relationships.push({
+        sourceLabel: 'File',
+        sourceId: fileId,
+        targetLabel: 'Route',
+        targetId: routeId,
+        type: 'HANDLES_ROUTE',
+        confidence: 0.9,
+        reason: route.handlerName ? `handler:${route.handlerName}` : 'regex-extract',
+      });
+    }
+
+    const tools = extractToolsFromFile(filePath, content);
+    for (const tool of tools) {
+      const toolId = makeId('Tool', `${tool.name}:${filePath}`);
+      nodes.push({
+        label: 'Tool',
+        id: toolId,
+        properties: {
+          name: tool.name,
+          filePath,
+          description: tool.description,
+        },
+      });
+
+      const fileId = makeId('File', filePath);
+      relationships.push({
+        sourceLabel: 'File',
+        sourceId: fileId,
+        targetLabel: 'Tool',
+        targetId: toolId,
+        type: 'HANDLES_TOOL',
+        confidence: 0.9,
+        reason: 'regex-extract',
+      });
+    }
+  }
+
+  return { nodes, relationships };
+};
+
 /**
  * Index a workspace into its graph store.
  *
@@ -254,6 +321,14 @@ export const ingestWorkspace = async (
   emit(options, `Writing ${symbols.nodes.length} symbols...`, 70);
   await batchCreateNodes(store, symbols.nodes);
   await batchCreateRelationships(store, symbols.relationships);
+
+  // ── 6b. Extract routes and tools ─────────────────────────────────────────
+  emit(options, 'Extracting routes and tools...', 75);
+  const routesAndTools = buildRoutesAndTools(filePaths, contents);
+  if (routesAndTools.nodes.length > 0) {
+    await batchCreateNodes(store, routesAndTools.nodes);
+    await batchCreateRelationships(store, routesAndTools.relationships);
+  }
 
   // ── 7. Save metadata ─────────────────────────────────────────────────────
   emit(options, 'Saving index metadata...', 90);

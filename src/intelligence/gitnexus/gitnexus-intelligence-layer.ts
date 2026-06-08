@@ -32,6 +32,9 @@ import { ingestWorkspace, type IngestWorkspaceOptions } from './ingest-workspace
 import { searchSymbols } from './search/symbol-search';
 import { getSymbolContext } from './search/symbol-context';
 import { getSymbolImpact } from './search/symbol-impact';
+import { detectChanges } from './search/detect-changes';
+import { getRouteMap } from './search/route-map';
+import { getToolMap } from './search/tool-map';
 
 export interface GitNexusIntelligenceLayerOptions {
   /** Base directory for all intelligence indexes. Default: runtime-data/intelligence */
@@ -327,14 +330,9 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         files: [],
       };
     }
-    // Phase 3: implement git-diff → symbol → affected flows
-    return {
-      changedAreas: 0,
-      affectedFlows: 0,
-      riskiestArea: '',
-      safeToContinue: true,
-      files: [],
-    };
+    const { dir } = this.resolveWorkspaceDbPath(workspaceId);
+    const store = this.getStore(workspaceId);
+    return detectChanges(store, dir);
   }
 
   async routeMap(route: string, workspaceId: string): Promise<RouteMapResult> {
@@ -347,13 +345,8 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         handlers: [],
       };
     }
-    // Phase 3: implement route extraction query
-    return {
-      route,
-      consumers: [],
-      middleware: [],
-      handlers: [],
-    };
+    const store = this.getStore(workspaceId);
+    return getRouteMap(store, route);
   }
 
   async toolMap(tool: string, workspaceId: string): Promise<ToolMapResult> {
@@ -365,12 +358,8 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
         implementations: [],
       };
     }
-    // Phase 3: implement tool extraction query
-    return {
-      tool,
-      callSites: [],
-      implementations: [],
-    };
+    const store = this.getStore(workspaceId);
+    return getToolMap(store, tool);
   }
 
   /**
