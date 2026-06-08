@@ -443,10 +443,10 @@ CREATE REL TABLE ${EDGE_TABLE_NAME} (
 // ============================================================================
 
 /** Embedding vector dimensions. Default 384 (snowflake-arctic-embed-xs). */
-const _rawDims = parseInt(process.env.GITNEXUS_EMBEDDING_DIMS ?? '384', 10);
+const _rawDims = parseInt(process.env.DEVPODS_INTELLIGENCE_EMBEDDING_DIMS ?? '384', 10);
 if (Number.isNaN(_rawDims) || _rawDims <= 0) {
   throw new Error(
-    `GITNEXUS_EMBEDDING_DIMS must be a positive integer, got "${process.env.GITNEXUS_EMBEDDING_DIMS}"`,
+    `DEVPODS_INTELLIGENCE_EMBEDDING_DIMS must be a positive integer, got "${process.env.DEVPODS_INTELLIGENCE_EMBEDDING_DIMS}"`,
   );
 }
 export const EMBEDDING_DIMS = _rawDims;

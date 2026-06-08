@@ -1,7 +1,7 @@
 # WS5: GitNexus Harvest Ledger
 
-> Locked against: `intelligence-layer-contract.ts` (W4 checkpoint, 2026-06-08)
-> Donor snapshot: `vendor-sources/GitNexus-main`
+> Locked against: `intelligence-layer-contract.ts` (W4 checkpoint, 2026-06-01)
+> Donor snapshot: `vendor-sources/GitNexus-main` (directory snapshot, ~627 source files, ~2479 test files)
 > Branch: `work/hermes-ticket-queue`
 
 ## Rule
@@ -11,12 +11,15 @@ No donor code reshapes the boundary. Donor code becomes the implementation.
 
 ## Phase Completion Log
 
-### Phase 1 — Graph Store & Schema ✅ (2026-06-01)
+### Phase 1 — Graph Store & Schema ✅ (2026-06-08)
 
-- `GraphStore` wraps LadybugDB native connection per workspace
-- Schema DDL created: 30 node types, 1 relationship table, 20 edge types
-- Query execution with safe `hasNext()`/`getNext()` iteration
-- Idempotent schema creation ("already exists" suppressed)
+- `GraphStore` wraps LadybugDB native connection per workspace (`src/intelligence/gitnexus/graph/graph-store.ts`)
+- Schema DDL created: **31 node types**, **1 relationship table** (`CodeRelation`), **20 edge types**
+- Query execution with safe `getNext()` iteration and explicit `result.close()` cleanup
+- Idempotent schema creation with bounded retry (3 attempts, 100 ms backoff) for transient lock races
+- `getIndexState()` checks `index-manifest.json` — empty/schema-only DBs report `not_indexed`, not `ready`
+- Workspace IDs are SHA-256 hashed for path safety; resolved paths are validated under `indexBasePath`
+- Read methods (`query`, `context`, `impact`, etc.) fail fast with fallback when index is not `ready`
 - Tests: 4 passing (`init`, `schema`, `idempotent`, `exists`, `insert+query`)
 - Typecheck clean, build clean
 

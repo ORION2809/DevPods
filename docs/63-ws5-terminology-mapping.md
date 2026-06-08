@@ -3,6 +3,8 @@
 When harvesting donor code, replace GitNexus terminology with DevPods-native terminology.
 This keeps the codebase internally consistent and avoids confusion.
 
+> **Frozen Interface Rule:** The public `IntelligenceLayer` method names (`query`, `context`, `impact`, `detectChanges`, `routeMap`, `toolMap`) are locked by contract in `src/intelligence/intelligence-layer-contract.ts`. They must never change. The table below maps GitNexus *internal* helper names to DevPods *internal* helper names. Public interface names stay frozen.
+
 | GitNexus term | DevPods term | Rationale |
 |---------------|--------------|-----------|
 | GitNexus | DevPods Intelligence | Product name |
@@ -14,12 +16,12 @@ This keeps the codebase internally consistent and avoids confusion.
 | repo manager | index manager | Manages indexed workspaces |
 | codebase context | workspace context | DevPods-native |
 | LocalBackend | IntelligenceEngine | The intelligence implementation |
-| query (method) | searchSymbols | Avoid confusion with CodeQueryResult.query |
-| context (method) | getSymbolContext | Avoid confusion with general "context" |
-| impact (method) | analyzeImpact | Verb form for clarity |
-| detect_changes | detectChanges | Already in our interface |
-| routeMap / route_map | mapRoutes | DevPods interface name |
-| toolMap / tool_map | mapTools | DevPods interface name |
+| query (method) | searchSymbols | **Internal helper only.** Public `IntelligenceLayer.query()` is frozen. |
+| context (method) | getSymbolContext | **Internal helper only.** Public `IntelligenceLayer.context()` is frozen. |
+| impact (method) | analyzeImpact | **Internal helper only.** Public `IntelligenceLayer.impact()` is frozen. |
+| detect_changes | detectChanges | Already in our interface — frozen. |
+| routeMap / route_map | mapRoutes | **Internal helper only.** Public `IntelligenceLayer.routeMap()` is frozen. |
+| toolMap / tool_map | mapTools | **Internal helper only.** Public `IntelligenceLayer.toolMap()` is frozen. |
 | CodeRelation | CodeEdge | Simpler, graph-native term |
 | node table | node type | LadybugDB-specific → generic graph |
 | `@ladybugdb/core` | `@ladybugdb/core` (keep package name) | npm package name stays |

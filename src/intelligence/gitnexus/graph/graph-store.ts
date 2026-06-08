@@ -8,7 +8,8 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import lbug, { Database, Connection } from '@ladybugdb/core';
+import { setTimeout } from 'node:timers/promises';
+import lbug, { Database, Connection, QueryResult } from '@ladybugdb/core';
 import { SCHEMA_QUERIES } from './schema';
 
 export interface GraphStoreOptions {
@@ -72,26 +73,39 @@ export class GraphStore {
 
   /**
    * Execute a Cypher query and return all rows.
+   *
+   * The QueryResult handle is always closed, even on error.
    */
   async query(cypher: string): Promise<unknown[]> {
     if (!this.conn) {
       throw new Error('GraphStore not initialised. Call init() first.');
     }
-    const result = await this.conn.query(cypher);
-    const rows: unknown[] = [];
-    while (true) {
-      try {
-        const row = await result.getNext();
-        rows.push(row);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('No more tuples')) {
-          break;
+    let result: QueryResult | null = null;
+    try {
+      result = await this.conn.query(cypher);
+      const rows: unknown[] = [];
+      while (true) {
+        try {
+          const row = await result.getNext();
+          rows.push(row);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('No more tuples')) {
+            break;
+          }
+          throw err;
         }
-        throw err;
+      }
+      return rows;
+    } finally {
+      if (result) {
+        try {
+          result.close();
+        } catch {
+          // Best-effort cleanup
+        }
       }
     }
-    return rows;
   }
 
   /**
@@ -110,30 +124,41 @@ export class GraphStore {
   }
 
   /**
-   * Return true if the database file exists on disk.
-   */
-  /**
    * Create the graph schema (node tables, relationship tables, indexes).
    * Idempotent — "already exists" errors are suppressed.
+   *
+   * Lock errors get bounded retry (3 attempts, 100 ms backoff) instead of
+   * silent suppression, so a partial schema never goes undetected.
    */
   async createSchema(): Promise<void> {
     if (!this.conn) {
       throw new Error('GraphStore not initialised. Call init() first.');
     }
     for (const ddl of SCHEMA_QUERIES) {
-      try {
-        await this.query(ddl);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Suppress "already exists" — schema creation is idempotent
-        if (/already exists/i.test(msg)) {
-          continue;
+      let lastErr: Error | undefined;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await this.query(ddl);
+          lastErr = undefined;
+          break;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // "already exists" is expected on re-runs
+          if (/already exists/i.test(msg)) {
+            lastErr = undefined;
+            break;
+          }
+          // Transient Windows lock race — retry with backoff
+          if (/could not set lock on file/i.test(msg) && attempt < 3) {
+            lastErr = err instanceof Error ? err : new Error(msg);
+            await setTimeout(100 * attempt);
+            continue;
+          }
+          throw err;
         }
-        // Suppress "could not set lock on file" — transient Windows lock race
-        if (/could not set lock on file/i.test(msg)) {
-          continue;
-        }
-        throw err;
+      }
+      if (lastErr) {
+        throw new Error(`Schema DDL failed after 3 attempts: ${lastErr.message}`);
       }
     }
   }
