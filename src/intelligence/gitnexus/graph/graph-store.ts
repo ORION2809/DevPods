@@ -9,6 +9,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import lbug, { Database, Connection } from '@ladybugdb/core';
+import { SCHEMA_QUERIES } from './schema';
 
 export interface GraphStoreOptions {
   /** Maximum DB size in bytes. Default: 16 GiB. */
@@ -78,24 +79,17 @@ export class GraphStore {
     }
     const result = await this.conn.query(cypher);
     const rows: unknown[] = [];
-    while (result.hasNext()) {
-      rows.push(result.getNext());
-    }
-    return rows;
-  }
-
-  /**
-   * Execute a Cypher query with parameters and return all rows.
-   */
-  async queryParameterized(cypher: string, params: Record<string, unknown>): Promise<unknown[]> {
-    if (!this.conn) {
-      throw new Error('GraphStore not initialised. Call init() first.');
-    }
-    const prepared = await this.conn.prepare(cypher);
-    const result = await prepared.execute(params);
-    const rows: unknown[] = [];
-    while (result.hasNext()) {
-      rows.push(result.getNext());
+    while (true) {
+      try {
+        const row = await result.getNext();
+        rows.push(row);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('No more tuples')) {
+          break;
+        }
+        throw err;
+      }
     }
     return rows;
   }
@@ -118,6 +112,32 @@ export class GraphStore {
   /**
    * Return true if the database file exists on disk.
    */
+  /**
+   * Create the graph schema (node tables, relationship tables, indexes).
+   * Idempotent — "already exists" errors are suppressed.
+   */
+  async createSchema(): Promise<void> {
+    if (!this.conn) {
+      throw new Error('GraphStore not initialised. Call init() first.');
+    }
+    for (const ddl of SCHEMA_QUERIES) {
+      try {
+        await this.query(ddl);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Suppress "already exists" — schema creation is idempotent
+        if (/already exists/i.test(msg)) {
+          continue;
+        }
+        // Suppress "could not set lock on file" — transient Windows lock race
+        if (/could not set lock on file/i.test(msg)) {
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
   async exists(): Promise<boolean> {
     try {
       await fs.access(this.dbPath);

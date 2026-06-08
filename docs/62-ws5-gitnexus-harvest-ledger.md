@@ -9,7 +9,27 @@
 GitNexus must fit **behind** the `IntelligenceLayer` interface. The contract is frozen.
 No donor code reshapes the boundary. Donor code becomes the implementation.
 
-## Must Harvest (Phase 1 — Core Engine)
+## Phase Completion Log
+
+### Phase 1 — Graph Store & Schema ✅ (2026-06-01)
+
+- `GraphStore` wraps LadybugDB native connection per workspace
+- Schema DDL created: 30 node types, 1 relationship table, 20 edge types
+- Query execution with safe `hasNext()`/`getNext()` iteration
+- Idempotent schema creation ("already exists" suppressed)
+- Tests: 4 passing (`init`, `schema`, `idempotent`, `exists`, `insert+query`)
+- Typecheck clean, build clean
+
+### Phase 0 — Scaffolding ✅ (2026-06-01)
+
+- `@ladybugdb/core@0.16.1` installed and verified on Windows
+- `src/intelligence/gitnexus/` directory scaffolded
+- Terminology mapping doc (`docs/63-ws5-terminology-mapping.md`)
+- `GraphStore` skeleton with native DB connection
+- Schema constants and DDL copied with DevPods naming
+- `GitNexusIntelligenceLayer` skeleton implements `IntelligenceLayer`
+
+## Must Harvest (Phase 2 — Ingestion & Search)
 
 | # | GitNexus area | Donor path | DevPods target | Notes |
 |---|---------------|------------|----------------|-------|
@@ -20,7 +40,7 @@ No donor code reshapes the boundary. Donor code becomes the implementation.
 | 5 | Ingestion pipeline | `src/core/ingestion/*` | `src/intelligence/ingestion/*` | Heart of code graph construction. Harvest selectively but deeply. |
 | 6 | Tree-sitter language support | `src/core/ingestion/languages/*` | `src/intelligence/ingestion/languages/*` | TS, JS, Kotlin first. Skip other languages initially. |
 | 7 | Worker-based parsing | `src/core/ingestion/workers/*` | `src/intelligence/ingestion/workers/*` | Critical for performance on real repos |
-| 8 | Graph schema and persistence | `src/core/lbug/*` | `src/intelligence/graph/*` | Local graph store and query substrate |
+| 8 | ~~Graph schema and persistence~~ | ~~`src/core/lbug/*`~~ | ~~`src/intelligence/graph/*`~~ | ✅ **Done in Phase 1** |
 | 9 | Search stack | `src/core/search/*` | `src/intelligence/search/*` | BM25 and hybrid ranking for usable query quality |
 | 10 | Local backend tool logic | `src/mcp/local/local-backend.ts` | `src/intelligence/local-backend.ts` | Real implementations of `query`, `context`, `impact`, `detect_changes`, `routeMap`, `toolMap` |
 | 11 | Route extraction | `src/core/ingestion/pipeline-phases/routes.ts`, `route-extractors/*` | `src/intelligence/ingestion/routes.ts` | Understanding APIs in developer repos |
