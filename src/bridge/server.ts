@@ -7,9 +7,14 @@ import { renderPairingQrDataUrl } from '../pairing/qr';
 import { buildRelayPairingPageUrl, buildRelayPairingUri } from '../pairing/uri';
 import { earbudEventSchema, androidRelayEventSchema, SUPPORTED_PROTOCOL_VERSIONS, pairingVerifyRequestSchema, outboxPollResponseSchema, notificationPreferenceSchema, reminderCreateRequestSchema, learnedPhraseSchema, nudgePolicySchema, prefetchRequestSchema, type JarvisResponse, type WorkspaceRegistry } from '../protocol/schemas';
 import type { IntentName } from '../protocol/types';
-import { createBridgeRuntime, type BridgeRuntime, type BridgeRuntimeOptions } from './runtime';
+import {
+  createBridgeRuntime,
+  type BridgeRuntime,
+  type BridgeRuntimeOptions,
+} from './runtime';
 import { classifyError } from './error-handler';
 import { IdempotencyStore } from './session-store';
+import type { BridgeCapabilitySnapshot, DevPodsInstalledTier } from '../protocol/schemas';
 
 const MAX_REQUEST_BYTES = 8 * 1024;
 const DEFAULT_SERVER_TIMEOUT_MS = 30_000;
@@ -107,7 +112,7 @@ export function createBridgeServer(options: BridgeServerOptions = {}): {
 
       if (request.method === 'GET' && request.url === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify(buildHealthPayload(runtime, options)));
+        response.end(JSON.stringify(await buildHealthPayload(runtime, options)));
         return;
       }
 
@@ -577,13 +582,15 @@ function resolveServerTimeoutMs(options: Pick<BridgeServerOptions, 'openclaw'>):
   return Math.max(DEFAULT_SERVER_TIMEOUT_MS, Math.floor(openClawTimeoutMs) + SERVER_TIMEOUT_BUFFER_MS);
 }
 
-function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions): {
+interface BridgeHealthPayload {
   ok: true;
   bridgeVersion: string;
   protocolVersion: number;
   minAppVersion: string;
   features: string[];
   brainMode: 'local' | 'openclaw';
+  tier: DevPodsInstalledTier;
+  capabilities: BridgeCapabilitySnapshot;
   openclawTransport: 'http' | 'local-cli' | 'gateway-client' | null;
   openclawRewritePolicy: 'always' | 'adaptive' | null;
   openclawRewriteHealth: ReturnType<BridgeRuntime['getOpenClawHealthSnapshot']>;
@@ -594,7 +601,9 @@ function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions
   workspaceRegistryLoaded: boolean;
   cache_hit_miss_telemetry: { hits: number; misses: number };
   workspaceSnapshotCacheEnabled: boolean;
-} {
+}
+
+async function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions): Promise<BridgeHealthPayload> {
   const brainMode = options.brainMode ?? 'local';
   const openclawTransport = options.openclaw
     ? options.openclaw.transport ?? 'http'
@@ -604,6 +613,7 @@ function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions
     : null;
   const openclawRewriteHealth = runtime.getOpenClawHealthSnapshot();
   const healthStatus = runtime.getHealthStatus();
+  const capabilities = await runtime.getCapabilitySnapshot();
 
   return {
     ok: true,
@@ -612,6 +622,8 @@ function buildHealthPayload(runtime: BridgeRuntime, options: BridgeServerOptions
     minAppVersion: '1.0.0',
     features: options.features ?? computeDefaultFeatures(options),
     brainMode,
+    tier: runtime.getTier(),
+    capabilities,
     openclawTransport,
     openclawRewritePolicy,
     openclawRewriteHealth,

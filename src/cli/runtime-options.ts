@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { BridgeRuntimeOptions } from '../bridge/runtime';
 import type { OpenClawGatewayOptions, OpenClawRewritePolicy } from '../openclaw/client';
+import type { DevPodsInstalledTier } from '../protocol/schemas';
 import {
   assertLocalCliModelConfiguration,
   preflightOpenClawOptions as preflightOpenClawRuntimeOptions,
@@ -24,6 +25,16 @@ export function resolveBrainMode(cliValue: string | boolean | undefined, env: No
   }
 
   throw new Error(`Invalid brain mode "${candidate}". Expected "local" or "openclaw".`);
+}
+
+export function resolveTier(cliValue: string | boolean | undefined, env: NodeJS.ProcessEnv = {}): DevPodsInstalledTier {
+  const candidate = stringifyOption(cliValue) ?? env.DEVPODS_TIER?.trim() ?? 'core';
+
+  if (candidate === 'core' || candidate === 'agent' || candidate === 'intelligence') {
+    return candidate;
+  }
+
+  throw new Error(`Invalid tier "${candidate}". Expected "core", "agent", or "intelligence".`);
 }
 
 export function resolveBridgeHost(cliValue: string | boolean | undefined, env: NodeJS.ProcessEnv = {}): string {
@@ -59,7 +70,7 @@ export function assertSafeBridgeExposure(host: string, relayToken: string | unde
 
 export function resolveBridgeCommandRuntimeOptions(
   input: ResolveBridgeCommandRuntimeOptionsInput,
-): Pick<BridgeRuntimeOptions, 'configPath' | 'brainMode' | 'openclaw'> {
+): Pick<BridgeRuntimeOptions, 'configPath' | 'brainMode' | 'tier' | 'openclaw'> {
   const cwd = input.cwd ?? process.cwd();
   const env = input.env ?? process.env;
   const configPath = resolvePathFromInput({
@@ -69,17 +80,20 @@ export function resolveBridgeCommandRuntimeOptions(
     defaultValue: 'config/workspaces.json',
   });
   const brainMode = resolveBrainMode(input.values.brain, env);
+  const tier = resolveTier(input.values.tier, env);
 
   if (brainMode === 'local') {
     return {
       configPath,
       brainMode,
+      tier,
     };
   }
 
   return {
     configPath,
     brainMode,
+    tier,
     openclaw: resolveOpenClawOptions(input.values, env, cwd),
   };
 }

@@ -1,5 +1,13 @@
 import path from 'node:path';
-import type { EarbudEvent, JarvisResponse, WorkspaceRegistry } from '../protocol/schemas';
+import type {
+  EarbudEvent,
+  JarvisResponse,
+  WorkspaceRegistry,
+  DevPodsInstalledTier,
+  BridgeCapabilitySnapshot,
+  IntelligenceWorkspaceCapability,
+  IntelligenceIndexState,
+} from '../protocol/schemas';
 import { loadWorkspaceRegistry, resolveWorkspace } from '../policy/allowlists';
 import { AuditLog } from './audit-log';
 import { EventRouter } from './event-router';
@@ -20,6 +28,12 @@ import { VoiceHabitStore } from '../personalization/voice-habit-store';
 import { WorkspaceAwarenessService } from '../personalization/workspace-awareness-service';
 import { NudgePolicyStore } from '../personalization/nudge-policy-store';
 import { WorkspaceSnapshotCache } from '../jarvis/workspace-snapshot-cache';
+import { TierConfigStore } from '../personalization/tier-config-store';
+import { OpenClawAgentRuntime } from '../agent/openclaw-agent-runtime';
+import { AgentRuntimeDispatcher } from '../agent/agent-runtime-dispatcher';
+import { StubIntelligenceLayer } from '../intelligence/stub-intelligence-layer';
+import type { IntelligenceLayer } from '../intelligence/intelligence-layer-contract';
+import { createReadOnlyIntelligenceLayer } from '../intelligence/read-only-guard';
 
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 const CIRCUIT_BREAKER_RESET_MS = 30_000;
@@ -30,6 +44,10 @@ export interface BridgeRuntimeOptions {
   auditLogPath?: string;
   notifier?: Notifier;
   brainMode?: 'local' | 'openclaw';
+  /** Installed product tier. Defaults to 'core' for backward compatibility. */
+  tier?: DevPodsInstalledTier;
+  /** Path to the tier configuration store. Defaults to runtime-data/tier-config.json. */
+  tierConfigStorePath?: string;
   openclaw?: OpenClawGatewayOptions;
   outboxStorePath?: string;
   notificationPreferenceStorePath?: string;
@@ -72,10 +90,91 @@ export class BridgeRuntime {
     readonly workspaceSnapshotCache: WorkspaceSnapshotCache = new WorkspaceSnapshotCache(),
     readonly registry: WorkspaceRegistry,
     readonly workspaceSnapshotCacheEnabled: boolean = true,
+    private readonly tier: DevPodsInstalledTier = 'core',
+    private readonly tierConfigStore: TierConfigStore | null = null,
+    private readonly intelligenceLayer: IntelligenceLayer | null = null,
   ) {}
 
   getOpenClawHealthSnapshot(): OpenClawRewriteHealthSnapshot | null {
     return this.openclawClient?.getHealthSnapshot() ?? null;
+  }
+
+  getTier(): DevPodsInstalledTier {
+    return this.tier;
+  }
+
+  async getCapabilitySnapshot(workspaceId?: string): Promise<BridgeCapabilitySnapshot> {
+    const openclawHealth = this.openclawClient?.getHealthSnapshot() ?? null;
+    const openclawHealthy = openclawHealth !== null && (openclawHealth.connectionState === 'connected' || openclawHealth.connectionState === 'not_applicable');
+    const healthStatus = this.getHealthStatus();
+    const isAgentTier = this.tier === 'agent' || this.tier === 'intelligence';
+    const isIntelligenceTier = this.tier === 'intelligence';
+
+    const consent = workspaceId && this.tierConfigStore
+      ? this.tierConfigStore.getIntelligenceConsent(workspaceId)
+      : null;
+    const hasAnyConsent = isIntelligenceTier && this.tierConfigStore
+      ? Object.values(this.tierConfigStore.getConfig().intelligenceConsent).some((c) => c.consented)
+      : false;
+    const intelligenceAvailable = workspaceId
+      ? isIntelligenceTier && (consent?.consented ?? false)
+      : isIntelligenceTier && hasAnyConsent;
+
+    const indexedWorkspaces = isIntelligenceTier && this.tierConfigStore
+      ? Object.entries(this.tierConfigStore.getConfig().intelligenceConsent)
+          .filter(([, c]) => c.consented)
+          .map(([id]) => id)
+      : [];
+
+    let currentWorkspace: IntelligenceWorkspaceCapability | null = null;
+    if (workspaceId && intelligenceAvailable && this.intelligenceLayer) {
+      const indexState = await this.intelligenceLayer.getIndexState(workspaceId);
+      currentWorkspace = {
+        workspaceId,
+        indexState,
+        indexedCommit: null,
+        lastIndexedAtMs: null,
+        stalenessReason: indexState === 'stale' ? 'Index is out of date' : null,
+      };
+    }
+
+    let indexState: IntelligenceIndexState;
+    if (!isIntelligenceTier) {
+      indexState = 'not_installed';
+    } else if (!intelligenceAvailable) {
+      indexState = 'disabled';
+    } else if (this.intelligenceLayer && workspaceId) {
+      indexState = await this.intelligenceLayer.getIndexState(workspaceId);
+    } else {
+      indexState = 'not_indexed';
+    }
+
+    return {
+      tier: this.tier,
+      capabilities: {
+        core: {
+          available: true,
+          voiceLoop: true,
+          approvals: true,
+          gitBasics: true,
+        },
+        agent: {
+          available: isAgentTier,
+          runtime: isAgentTier ? 'openclaw' : 'none',
+          healthy: isAgentTier && openclawHealthy && !healthStatus.degraded,
+          state: isAgentTier && openclawHealthy ? 'idle' : 'blocked',
+          degradedReason: healthStatus.degraded
+            ? (healthStatus.lastErrorCategory ?? 'bridge_degraded')
+            : (!openclawHealthy && isAgentTier ? 'openclaw_unhealthy' : null),
+        },
+        intelligence: {
+          available: intelligenceAvailable,
+          indexState,
+          workspaces: indexedWorkspaces,
+          currentWorkspace,
+        },
+      },
+    };
   }
 
   enableQuickStart(sessionId: string): void {
@@ -261,6 +360,34 @@ export function createBridgeRuntime(options: BridgeRuntimeOptions = {}): BridgeR
     options.workspaceAwarenessConfig,
   );
   workspaceAwarenessService.start();
-  const eventRouter = new EventRouter(registry, sessionStore, auditLog, jarvisRuntime, voiceHabitStore, outboxStore, reminderStore);
-  return new BridgeRuntime(eventRouter, sessionStore, notifier, openclawClient, outboxStore, notificationPreferenceStore, reminderStore, voiceHabitStore, nudgePolicyStore, workspaceAwarenessService, workspaceSnapshotCache, registry, options.workspaceSnapshotCacheEnabled ?? true);
+  const tierConfigStore = new TierConfigStore(
+    options.tierConfigStorePath ?? path.resolve(process.cwd(), 'runtime-data/tier-config.json'),
+  );
+  const isAgentTier = (options.tier ?? 'core') === 'agent' || (options.tier ?? 'core') === 'intelligence';
+  const isIntelligenceTier = (options.tier ?? 'core') === 'intelligence';
+  const rawIntelligenceLayer = isIntelligenceTier ? new StubIntelligenceLayer('not_indexed') : undefined;
+  const intelligenceLayer = rawIntelligenceLayer ? createReadOnlyIntelligenceLayer(rawIntelligenceLayer) : undefined;
+  const agentRuntime = isAgentTier ? new OpenClawAgentRuntime({ simulateProgress: false, intelligenceLayer }) : null;
+  const agentRuntimeDispatcher = agentRuntime
+    ? new AgentRuntimeDispatcher({ agentRuntime, sessionStore, auditLog, tier: options.tier ?? 'core', tierConfigStore })
+    : null;
+  const eventRouter = new EventRouter(registry, sessionStore, auditLog, jarvisRuntime, voiceHabitStore, outboxStore, reminderStore, agentRuntimeDispatcher);
+  return new BridgeRuntime(
+    eventRouter,
+    sessionStore,
+    notifier,
+    openclawClient,
+    outboxStore,
+    notificationPreferenceStore,
+    reminderStore,
+    voiceHabitStore,
+    nudgePolicyStore,
+    workspaceAwarenessService,
+    workspaceSnapshotCache,
+    registry,
+    options.workspaceSnapshotCacheEnabled ?? true,
+    options.tier ?? 'core',
+    tierConfigStore,
+    intelligenceLayer ?? null,
+  );
 }

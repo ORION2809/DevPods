@@ -12,6 +12,7 @@ import { AuditLog } from './audit-log';
 import type { VoiceHabitStore } from '../personalization/voice-habit-store';
 import type { OutboxStore } from '../personalization/outbox-store';
 import type { ReminderStore } from '../personalization/reminder-store';
+import type { AgentRuntimeDispatcher } from '../agent/agent-runtime-dispatcher';
 
 export class EventRouter {
   constructor(
@@ -22,6 +23,7 @@ export class EventRouter {
     private readonly voiceHabitStore: VoiceHabitStore | null = null,
     private readonly outboxStore: OutboxStore | null = null,
     private readonly reminderStore: ReminderStore | null = null,
+    private readonly agentRuntimeDispatcher: AgentRuntimeDispatcher | null = null,
   ) {}
 
   async dispatch(event: EarbudEvent): Promise<JarvisResponse> {
@@ -121,6 +123,22 @@ export class EventRouter {
         return this.handleLearningPromptConfirm(request, workspace);
       case 'learning_prompt_reject':
         return this.handleLearningPromptReject(request, workspace);
+      case 'agent_plan_confirm':
+      case 'agent_plan_cancel':
+      case 'agent_plan_redirect':
+        return this.handleAgentPlanGesture(request, workspace);
+      default:
+        // Exhaustiveness guard for unhandled request events
+        return this.respond(request, workspace.id, {
+          speak: 'That gesture is not recognised.',
+          display: `Unhandled request event: ${(request as { event: string }).event}`,
+          requiresApproval: false,
+          approvalRequest: null,
+          actionId: null,
+          status: 'blocked',
+          nextState: 'idle',
+          followUpHint: null,
+        }, 'blocked');
     }
   }
 
@@ -209,6 +227,26 @@ export class EventRouter {
     }, 'rejected');
   }
 
+  private async handleAgentPlanGesture(
+    request: ReturnType<typeof buildBridgeRequest>,
+    workspace: ReturnType<typeof resolveWorkspace>,
+  ): Promise<JarvisResponse> {
+    if (!this.agentRuntimeDispatcher) {
+      return this.respond(request, workspace.id, {
+        speak: 'Agent runtime is not available.',
+        display: 'This DevPods installation does not include an agent runtime. Upgrade to the Agent tier to use planning.',
+        requiresApproval: false,
+        approvalRequest: null,
+        actionId: null,
+        status: 'blocked',
+        nextState: 'idle',
+        followUpHint: null,
+      }, 'blocked');
+    }
+
+    return this.agentRuntimeDispatcher.dispatch('agent_plan', request, workspace);
+  }
+
   private async handleResolvedIntent(
     request: ReturnType<typeof buildBridgeRequest>,
     workspace: ReturnType<typeof resolveWorkspace>,
@@ -292,6 +330,21 @@ export class EventRouter {
 
     if (intent === 'create_reminder') {
       return this.handleCreateReminder(request, workspace);
+    }
+
+    // Route agent-tier intents through the agent runtime dispatcher when available
+    if (this.agentRuntimeDispatcher?.canHandle(intent)) {
+      this.sessionStore.clearAutonomy(request.sessionId);
+      this.sessionStore.setState(request.sessionId, 'thinking');
+      const response = await this.agentRuntimeDispatcher.dispatch(intent, request, workspace);
+      this.sessionStore.setState(request.sessionId, response.nextState);
+      if (response.status === 'completed' || response.status === 'acknowledged') {
+        this.sessionStore.setCompletionContext(request.sessionId, response.speak);
+        if (!response.followUpHint) {
+          response.followUpHint = 'Say remind me later to defer';
+        }
+      }
+      return this.respond(request, workspace.id, response, 'completed');
     }
 
     this.sessionStore.clearAutonomy(request.sessionId);
@@ -445,6 +498,18 @@ export class EventRouter {
     request: ReturnType<typeof buildBridgeRequest>,
     workspaceId: string,
   ): Promise<JarvisResponse> {
+    // Check for active agent plan first: right double tap while awaiting plan confirmation
+    const activePlan = this.sessionStore.getActivePlan(request.sessionId);
+    if (
+      activePlan
+      && request.pendingActionId === activePlan.planId
+      && request.approvalAction === 'approve'
+      && this.agentRuntimeDispatcher
+    ) {
+      const workspace = resolveWorkspace(this.registry, workspaceId);
+      return this.agentRuntimeDispatcher.dispatch('agent_plan', request, workspace);
+    }
+
     if (!request.pendingActionId) {
       this.sessionStore.setState(request.sessionId, 'idle');
       return this.respond(request, workspaceId, {

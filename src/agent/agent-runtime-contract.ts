@@ -1,19 +1,29 @@
-import type { BridgeRequest, JarvisResponse, WorkspaceConfig } from '../protocol/schemas';
+import type {
+  BridgeRequest,
+  BridgeCapabilitySnapshot,
+  AgentCapabilitySnapshot,
+  DevPodsInstalledTier,
+  AgentRuntimeKind,
+  AgentRuntimeHealth,
+  AgentRuntimePhase,
+  IntelligenceIndexState,
+  IntelligenceWorkspaceCapability,
+  JarvisResponse,
+  WorkspaceConfig,
+} from '../protocol/schemas';
 import type { IntentName } from '../protocol/types';
 
-export type DevPodsInstalledTier = 'core' | 'agent' | 'intelligence';
-export type AgentRuntimeKind = 'openclaw' | 'hermes';
-export type AgentRuntimeHealth = 'healthy' | 'degraded' | 'unavailable';
-export type AgentRuntimePhase =
-  | 'idle'
-  | 'thinking'
-  | 'planning'
-  | 'awaiting_confirmation'
-  | 'running'
-  | 'done'
-  | 'blocked'
-  | 'error'
-  | 'cancelled';
+export type {
+  BridgeCapabilitySnapshot,
+  AgentCapabilitySnapshot,
+  DevPodsInstalledTier,
+  AgentRuntimeKind,
+  AgentRuntimeHealth,
+  AgentRuntimePhase,
+  IntelligenceIndexState,
+  IntelligenceWorkspaceCapability,
+};
+
 export type AgentRequestMode =
   | 'answer'
   | 'plan'
@@ -23,15 +33,6 @@ export type AgentRequestMode =
   | 'replan'
   | 'cancel';
 export type AgentRiskClass = 'immediate' | 'approval_required' | 'hard_approval';
-export type IntelligenceIndexState =
-  | 'not_installed'
-  | 'disabled'
-  | 'not_indexed'
-  | 'indexing'
-  | 'ready'
-  | 'stale'
-  | 'failed'
-  | 'paused';
 export type AgentProgressKind =
   | 'thinking'
   | 'plan_ready'
@@ -51,52 +52,6 @@ export type AgentRuntimeResponseStatus =
   | 'blocked'
   | 'error'
   | 'cancelled';
-
-export interface BridgeCapabilitySnapshot {
-  tier: DevPodsInstalledTier;
-  capabilities: {
-    core: {
-      available: true;
-      voiceLoop: true;
-      approvals: true;
-      gitBasics: true;
-    };
-    agent: {
-      available: boolean;
-      runtime: AgentRuntimeKind | 'none';
-      healthy: boolean;
-      state: AgentRuntimePhase;
-      degradedReason: string | null;
-    };
-    intelligence: {
-      available: boolean;
-      indexState: IntelligenceIndexState;
-      workspaces: readonly string[];
-      currentWorkspace: IntelligenceWorkspaceCapability | null;
-    };
-  };
-}
-
-export interface IntelligenceWorkspaceCapability {
-  workspaceId: string;
-  indexState: IntelligenceIndexState;
-  indexedCommit: string | null;
-  lastIndexedAtMs: number | null;
-  stalenessReason: string | null;
-}
-
-export interface AgentCapabilitySnapshot {
-  runtime: AgentRuntimeKind;
-  health: AgentRuntimeHealth;
-  state: AgentRuntimePhase;
-  supportsPlanConfirmation: boolean;
-  supportsProgressEvents: boolean;
-  intelligence: {
-    available: boolean;
-    indexState: IntelligenceIndexState;
-    workspaces: readonly string[];
-  };
-}
 
 export interface AgentRuntimeRequest {
   requestId: string;
@@ -119,6 +74,14 @@ export interface AgentRuntimeConstraints {
   hardApprovalIntents: readonly IntentName[];
   intelligenceAvailable: boolean;
   redactionRequired: boolean;
+}
+
+export interface AgentAcknowledgement {
+  planId: string;
+  requestId: string;
+  sessionId: string;
+  intentUnderstood: string;
+  planningEstimateMs: number;
 }
 
 export interface AgentPlanConfirmation {
@@ -152,6 +115,12 @@ export interface AgentPlannedCommand {
   requiresApproval: boolean;
 }
 
+export interface AgentPlanResponse {
+  planId: string;
+  decision: 'confirmed' | 'redirected' | 'cancelled';
+  redirectUtterance?: string;
+}
+
 export interface AgentProgressEvent {
   id: string;
   requestId: string;
@@ -167,12 +136,26 @@ export interface AgentProgressEvent {
   atMs: number;
 }
 
+export interface AgentCompletionReport {
+  planId: string;
+  outcome: 'completed' | 'failed' | 'partial';
+  completedSteps: number;
+  totalSteps: number;
+  summary: string;
+  failureReason?: string;
+  nextSuggestion?: string;
+  requiresReview: boolean;
+}
+
 export interface AgentRuntimeResponse {
   requestId: string;
   status: AgentRuntimeResponseStatus;
   response: JarvisResponse;
+  acknowledgement: AgentAcknowledgement | null;
   planConfirmation: AgentPlanConfirmation | null;
+  planResponse: AgentPlanResponse | null;
   progress: readonly AgentProgressEvent[];
+  completionReport: AgentCompletionReport | null;
   actionId: string | null;
   error: AgentRuntimeError | null;
 }
@@ -187,6 +170,8 @@ export interface AgentRuntimeCallbacks {
   onProgress(event: AgentProgressEvent): void | Promise<void>;
   onPlanReady?(plan: AgentPlanConfirmation): void | Promise<void>;
   onResponseDraft?(response: JarvisResponse): void | Promise<void>;
+  onAcknowledgement?(ack: AgentAcknowledgement): void | Promise<void>;
+  onCompletion?(report: AgentCompletionReport): void | Promise<void>;
 }
 
 export interface AgentRuntime {

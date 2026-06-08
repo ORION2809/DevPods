@@ -1,5 +1,6 @@
 import type { AutonomyInstruction, BridgeRequest } from '../protocol/schemas';
 import type { IntentName } from '../protocol/types';
+import type { AgentPlanConfirmation } from '../agent/agent-runtime-contract';
 
 export interface PendingAction {
   actionId: string;
@@ -10,6 +11,16 @@ export interface PendingAction {
   summary: string;
   riskClass: 'approval_required' | 'hard_approval';
   expiresAt: Date;
+}
+
+export interface ActivePlan {
+  planId: string;
+  sessionId: string;
+  workspace: string;
+  planConfirmation: AgentPlanConfirmation;
+  status: 'awaiting_confirmation' | 'confirmed' | 'cancelled' | 'redirected' | 'running';
+  redirectUtterance?: string;
+  createdAtMs: number;
 }
 
 interface SessionStateRecord {
@@ -39,6 +50,7 @@ export class SessionStore {
   private readonly autonomyBySession = new Map<string, SessionAutonomyRecord>();
   private readonly quickStartSessions = new Set<string>();
   private readonly completionContextBySession = new Map<string, CompletionContext>();
+  private readonly activePlanBySession = new Map<string, ActivePlan>();
 
   constructor(private readonly ttlMs = 60 * 60 * 1000) {}
 
@@ -176,6 +188,21 @@ export class SessionStore {
     this.completionContextBySession.delete(sessionId);
   }
 
+  setActivePlan(plan: ActivePlan): void {
+    this.prune();
+    this.activePlanBySession.set(plan.sessionId, plan);
+    this.setState(plan.sessionId, 'awaiting_plan_confirmation');
+  }
+
+  getActivePlan(sessionId: string): ActivePlan | null {
+    this.prune();
+    return this.activePlanBySession.get(sessionId) ?? null;
+  }
+
+  clearActivePlan(sessionId: string): void {
+    this.activePlanBySession.delete(sessionId);
+  }
+
   private prune(now = Date.now()): void {
     for (const [sessionId, record] of this.states.entries()) {
       if (now - record.touchedAt > this.ttlMs) {
@@ -213,6 +240,12 @@ export class SessionStore {
     for (const [sessionId, ctx] of this.completionContextBySession.entries()) {
       if (now - ctx.completedAtMs > this.ttlMs) {
         this.completionContextBySession.delete(sessionId);
+      }
+    }
+
+    for (const [sessionId, plan] of this.activePlanBySession.entries()) {
+      if (now - plan.createdAtMs > this.ttlMs || now > plan.planConfirmation.expiresAtMs) {
+        this.activePlanBySession.delete(sessionId);
       }
     }
   }

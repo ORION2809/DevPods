@@ -3,5 +3,6 @@
   "port": 4545,
   "relayToken": "",
   "pairingBaseUrl": "",
-  "openBrowser": true
+  "openBrowser": true,
+  "tier": "core"
 }

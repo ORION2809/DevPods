@@ -163,7 +163,13 @@ describe('DevPods CLI OpenClaw mode', () => {
   it('prints DevPods usage when no command is provided', async () => {
     const stdout = await runCli([]);
 
-    expect(stdout).toContain('Usage: devpods <start|local|send|listen|say|health>');
+    expect(stdout).toContain('Usage: devpods <start|local|send|listen|say|health|setup>');
+  });
+
+  it('rejects an invalid --tier flag instead of silently falling back to core', async () => {
+    await expect(runCli(['local', 'left_long_press', '--tier', 'invalid'])).rejects.toThrow(
+      /Invalid tier "invalid"/,
+    );
   });
 
   it('routes the local CLI command through OpenClaw HTTP rewrite mode', async () => {

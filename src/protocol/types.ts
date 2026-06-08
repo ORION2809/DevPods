@@ -11,6 +11,14 @@ export const intentNames = [
   'delete',
   'revert',
   'create_reminder',
+  'agent_plan',
+  'agent_report',
+  'agent_cancel',
+  'agent_redirect',
+  'impact_analysis',
+  'detect_changes',
+  'query_symbol',
+  'explain_flow',
 ] as const;
 
 export type IntentName = (typeof intentNames)[number];

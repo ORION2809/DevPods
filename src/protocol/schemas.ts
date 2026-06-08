@@ -21,6 +21,9 @@ export const earbudEventNameSchema = z.enum([
   'android_autonomy_interrupt',
   'android_learning_confirm',
   'android_learning_reject',
+  'android_agent_plan_confirm',
+  'android_agent_plan_cancel',
+  'android_agent_plan_redirect',
 ]);
 
 export const requestEventSchema = z.enum([
@@ -35,6 +38,9 @@ export const requestEventSchema = z.enum([
   'resume',
   'learning_prompt_confirm',
   'learning_prompt_reject',
+  'agent_plan_confirm',
+  'agent_plan_cancel',
+  'agent_plan_redirect',
 ]);
 
 export const approvalActionSchema = z.enum(['approve', 'reject', 'cancel', 'expire']);
@@ -44,6 +50,7 @@ export const sessionStateSchema = z.enum([
   'listening',
   'thinking',
   'approval_pending',
+  'awaiting_plan_confirmation',
   'queued',
   'running',
   'responding',
@@ -331,6 +338,77 @@ export const prefetchRequestSchema = z.object({
   idempotencyKey: z.string().min(1),
 });
 
+export const devPodsInstalledTierSchema = z.enum(['core', 'agent', 'intelligence']);
+export const agentRuntimeKindSchema = z.enum(['openclaw', 'hermes', 'none']);
+export const agentRuntimeHealthSchema = z.enum(['healthy', 'degraded', 'unavailable']);
+export const agentRuntimePhaseSchema = z.enum([
+  'idle',
+  'thinking',
+  'planning',
+  'awaiting_confirmation',
+  'running',
+  'done',
+  'blocked',
+  'error',
+  'cancelled',
+]);
+export const intelligenceIndexStateSchema = z.enum([
+  'not_installed',
+  'disabled',
+  'not_indexed',
+  'indexing',
+  'ready',
+  'stale',
+  'failed',
+  'paused',
+]);
+
+export const intelligenceWorkspaceCapabilitySchema = z.object({
+  workspaceId: z.string().min(1),
+  indexState: intelligenceIndexStateSchema,
+  indexedCommit: z.string().nullable(),
+  lastIndexedAtMs: z.number().int().nullable(),
+  stalenessReason: z.string().nullable(),
+});
+
+export const agentCapabilitySnapshotSchema = z.object({
+  runtime: agentRuntimeKindSchema,
+  health: agentRuntimeHealthSchema,
+  state: agentRuntimePhaseSchema,
+  supportsPlanConfirmation: z.boolean(),
+  supportsProgressEvents: z.boolean(),
+  intelligence: z.object({
+    available: z.boolean(),
+    indexState: intelligenceIndexStateSchema,
+    workspaces: z.array(z.string()),
+  }),
+});
+
+export const bridgeCapabilitySnapshotSchema = z.object({
+  tier: devPodsInstalledTierSchema,
+  capabilities: z.object({
+    core: z.object({
+      available: z.literal(true),
+      voiceLoop: z.literal(true),
+      approvals: z.literal(true),
+      gitBasics: z.literal(true),
+    }),
+    agent: z.object({
+      available: z.boolean(),
+      runtime: agentRuntimeKindSchema,
+      healthy: z.boolean(),
+      state: agentRuntimePhaseSchema,
+      degradedReason: z.string().nullable(),
+    }),
+    intelligence: z.object({
+      available: z.boolean(),
+      indexState: intelligenceIndexStateSchema,
+      workspaces: z.array(z.string()),
+      currentWorkspace: intelligenceWorkspaceCapabilitySchema.nullable(),
+    }),
+  }),
+});
+
 export const streamFrameSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('started') }),
   z.object({ type: z.literal('speak_delta'), delta: z.string() }),
@@ -392,3 +470,11 @@ export type NudgeThreshold = z.infer<typeof nudgeThresholdSchema>;
 export type NudgePolicy = z.infer<typeof nudgePolicySchema>;
 export type PrefetchRequest = z.infer<typeof prefetchRequestSchema>;
 export type StreamFrame = z.infer<typeof streamFrameSchema>;
+export type DevPodsInstalledTier = z.infer<typeof devPodsInstalledTierSchema>;
+export type AgentRuntimeKind = z.infer<typeof agentRuntimeKindSchema>;
+export type AgentRuntimeHealth = z.infer<typeof agentRuntimeHealthSchema>;
+export type AgentRuntimePhase = z.infer<typeof agentRuntimePhaseSchema>;
+export type IntelligenceIndexState = z.infer<typeof intelligenceIndexStateSchema>;
+export type IntelligenceWorkspaceCapability = z.infer<typeof intelligenceWorkspaceCapabilitySchema>;
+export type AgentCapabilitySnapshot = z.infer<typeof agentCapabilitySnapshotSchema>;
+export type BridgeCapabilitySnapshot = z.infer<typeof bridgeCapabilitySnapshotSchema>;

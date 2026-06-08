@@ -47,9 +47,11 @@ $pairingBaseUrl = if ([string]::IsNullOrWhiteSpace($config.pairingBaseUrl)) {
 } else {
     $config.pairingBaseUrl.Trim().TrimEnd('/')
 }
+$tier = if ([string]::IsNullOrWhiteSpace($config.tier)) { 'core' } else { $config.tier.Trim() }
 
 $config.relayToken = $relayToken
 $config.pairingBaseUrl = $pairingBaseUrl
+$config.tier = $tier
 $config | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
 
 $nodePath = Join-Path $appRoot 'node.exe'
@@ -66,7 +68,8 @@ $argumentList = @(
     '--host', $host,
     '--port', $port,
     '--relay-token', $relayToken,
-    '--pairing-base-url', $pairingBaseUrl
+    '--pairing-base-url', $pairingBaseUrl,
+    '--tier', $tier
 )
 
 if ($Foreground) {

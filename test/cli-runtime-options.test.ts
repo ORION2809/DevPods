@@ -8,6 +8,7 @@ import {
   resolveBrainMode,
   resolveBridgeHost,
   resolveRelayToken,
+  resolveTier,
 } from '../src/cli/runtime-options';
 
 describe('resolveBrainMode', () => {
@@ -26,6 +27,26 @@ describe('resolveBrainMode', () => {
   it('rejects invalid brain modes', () => {
     expect(() => resolveBrainMode('invalid', {})).toThrow(
       'Invalid brain mode "invalid". Expected "local" or "openclaw".',
+    );
+  });
+});
+
+describe('resolveTier', () => {
+  it('defaults to core when no CLI flag or environment override is present', () => {
+    expect(resolveTier(undefined, {})).toBe('core');
+  });
+
+  it('uses the environment override when no CLI flag is provided', () => {
+    expect(resolveTier(undefined, { DEVPODS_TIER: 'agent' })).toBe('agent');
+  });
+
+  it('prefers the CLI flag over the environment override', () => {
+    expect(resolveTier('intelligence', { DEVPODS_TIER: 'agent' })).toBe('intelligence');
+  });
+
+  it('rejects invalid tiers', () => {
+    expect(() => resolveTier('invalid', {})).toThrow(
+      'Invalid tier "invalid". Expected "core", "agent", or "intelligence".',
     );
   });
 });
@@ -52,6 +73,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'local',
+      tier: 'core',
     });
   });
 
@@ -103,6 +125,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'openclaw',
+      tier: 'core',
       openclaw: {
         transport: 'local-cli',
         model: 'openai/mock-rewrite-model',
@@ -134,6 +157,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'openclaw',
+      tier: 'core',
       openclaw: {
         transport: 'http',
         baseUrl: 'http://127.0.0.1:8080',
@@ -162,6 +186,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'openclaw',
+      tier: 'core',
       openclaw: {
         transport: 'gateway-client',
         baseUrl: 'http://127.0.0.1:8080',
@@ -192,6 +217,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'openclaw',
+      tier: 'core',
       openclaw: {
         transport: 'http',
         baseUrl: 'http://127.0.0.1:8080',
@@ -218,6 +244,7 @@ describe('resolveBridgeCommandRuntimeOptions', () => {
     expect(options).toEqual({
       configPath: path.resolve('C:/workspace', 'config/workspaces.json'),
       brainMode: 'openclaw',
+      tier: 'core',
       openclaw: {
         transport: 'http',
         baseUrl: 'http://127.0.0.1:8080',

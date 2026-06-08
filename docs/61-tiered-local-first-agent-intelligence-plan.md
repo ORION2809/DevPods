@@ -357,7 +357,10 @@ Required contents:
 - `requestId`
 - lifecycle `status`
 - normal `JarvisResponse`
+- optional `AgentAcknowledgement`
 - optional `AgentPlanConfirmation`
+- optional `AgentPlanResponse`
+- optional `AgentCompletionReport`
 - progress events emitted during the turn
 - optional `actionId`
 - optional structured error
@@ -388,27 +391,201 @@ Rules:
 - `blocked` means policy, missing capability, missing workspace consent, or user direction is needed.
 - `error` means the runtime failed and Core fallback should remain available.
 
-### Plan Confirmation Structure
+### Conversation Data Structures
 
-Implementation plans are data, not prose hidden in a paragraph.
+The gap to close is not only plan confirmation. Workstream 3 must define the full agent voice conversation as deterministic data.
+
+The six required structures are:
+
+- `AgentAcknowledgement`
+- `AgentPlanConfirmation`
+- `AgentPlanResponse`
+- `AgentProgressEvent`
+- existing `ApprovalRequest`
+- `AgentCompletionReport`
+
+These are product-level contract shapes. They should be reconciled into `src/agent/agent-runtime-contract.ts` during Workstream 3, but this document does not implement that code.
+
+#### AgentAcknowledgement
 
 ```ts
-interface AgentPlanConfirmation {
+interface AgentAcknowledgement {
   planId: string;
   requestId: string;
   sessionId: string;
-  summary: string;
-  spokenSummary: string;
-  confirmationPrompt: string;
-  riskClass: 'immediate' | 'approval_required' | 'hard_approval';
-  affectedFiles: readonly string[];
-  expectedCommands: readonly AgentPlannedCommand[];
-  steps: readonly AgentPlanStep[];
-  expiresAtMs: number;
+  intentUnderstood: string;
+  planningEstimateMs: number;
 }
 ```
 
+Purpose:
+
+- confirms the agent heard the developer
+- gives the developer confidence that planning has started
+- prevents dead air while the runtime thinks
+
+Voice example:
+
+```text
+Got it. Analysing approval flow. Plan ready in about 10 seconds.
+```
+
+#### AgentPlanConfirmation
+
+```ts
+interface AgentPlanConfirmation {
+  summary: string;
+  planId: string;
+  stepCount: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  affectedAreas: string[];
+  requiresHardApproval: boolean;
+  estimatedDurationMs: number;
+  canProceedImmediately: boolean;
+}
+```
+
+Purpose:
+
+- summarizes the plan for voice
+- gives Android enough metadata to show the full plan detail
+- lets the bridge know whether implementation can proceed after confirmation
+
+Low-risk voice example:
+
+```text
+3 steps. Updates session store and approval gate. Low risk. Start?
+```
+
+High-risk voice example:
+
+```text
+4 steps. Touches approval flow, relay, and policy engine. High risk. Confirm to proceed.
+```
+
 The bridge stores `planId`, maps it to `actionId` when approved, audits the decision, and enforces any approval or hard-approval rules before execution starts.
+
+#### AgentPlanResponse
+
+```ts
+interface AgentPlanResponse {
+  planId: string;
+  decision: 'confirmed' | 'redirected' | 'cancelled';
+  redirectUtterance?: string;
+}
+```
+
+Purpose:
+
+- captures whether the developer approved, redirected, or cancelled the plan
+- keeps voice gestures and spoken redirection in one explicit bridge event
+- prevents the agent from treating silence as permission
+
+Decision mapping:
+
+| Developer Response | Input Path | Voice | Bridge Event |
+| --- | --- | --- | --- |
+| Confirm | Right double tap | "Starting now." | `agent_plan_confirmed` |
+| Redirect | Wake + speak | "Heard. Replanning." | `agent_plan_redirect` |
+| Cancel | Both hold | "Cancelled." | `agent_plan_cancelled` |
+
+#### AgentProgressEvent
+
+```ts
+interface AgentProgressEvent {
+  planId: string;
+  planningStepCompleted: number;
+  totalSteps: number;
+  currentStepSummary: string;
+  nextStepSummary: string;
+  blockingIssue?: string;
+  progressPercent: number;
+}
+```
+
+Purpose:
+
+- lets the bridge report active work without noisy interruptions
+- supports tap-to-check status while the developer is away
+- creates a structured path for blocking questions
+
+Default behavior:
+
+- silent while work is progressing normally
+- speak only when the user taps during active work
+- interrupt only for a blocking issue, approval, failure, or completion
+
+Tap status voice example:
+
+```text
+Step 2 of 4. Updating the session store. All good.
+```
+
+Blocking issue voice example:
+
+```text
+Stuck on step 3. Two ways to handle this. Want to hear them?
+```
+
+#### Existing ApprovalRequest
+
+Risky execution actions keep using the existing approval system.
+
+No new agent-only approval structure should be introduced for:
+
+- commit
+- push
+- deploy
+- delete
+- revert
+- any hard-approval action
+
+Voice example:
+
+```text
+Commit staged files. Hard approval. 12 seconds. Approve?
+```
+
+This is the most important safety moment in the agentic loop. The agent triggers the normal policy path, the bridge creates the normal `ApprovalRequest`, Android shows the normal countdown, the earbud gesture approves or rejects, and the audit log records it exactly like a non-agent command.
+
+#### AgentCompletionReport
+
+```ts
+interface AgentCompletionReport {
+  planId: string;
+  outcome: 'completed' | 'failed' | 'partial';
+  completedSteps: number;
+  totalSteps: number;
+  summary: string;
+  failureReason?: string;
+  nextSuggestion?: string;
+  requiresReview: boolean;
+}
+```
+
+Purpose:
+
+- closes the loop for the away-from-laptop developer
+- distinguishes completed, failed, and partial outcomes
+- gives Android the richer report while voice stays short
+
+Success voice example:
+
+```text
+Done. Refactored approval flow across 4 files. Tests still passing.
+```
+
+Failure voice example:
+
+```text
+Stopped at step 3. Couldn't resolve the session store conflict. Want to try differently?
+```
+
+Partial voice example:
+
+```text
+Completed 3 of 4 steps. Push requires your approval. Ready when you are.
+```
 
 ### Partial Progress Through JarvisResponse
 
@@ -613,34 +790,132 @@ The goal is smarter content, not longer speech.
 - approvals state the action and gesture
 - plans ask for confirmation before implementation
 
-### Plan Confirmation Voice Flow
+### Full Agent Voice Conversation Flow
 
-Plan confirmation needs its own voice design because full plans rarely fit the 24-word budget.
+The agentic loop has six distinct voice moments. Each moment needs a typed structure, a voice pattern, a word budget, and a matching Android display state.
 
-The spoken layer should use two short pieces:
+The product rule:
 
-- `spokenSummary`: what the agent intends to do
-- `confirmationPrompt`: exactly how the user approves, rejects, or redirects
+```text
+Voice carries the decision. Display carries the detail.
+```
+
+The developer hears enough to decide:
+
+- confirm
+- redirect
+- cancel
+- approve
+- reject
+- ignore
+
+Android carries everything else:
+
+- full plan steps
+- affected files
+- affected symbols
+- line references
+- risk explanation
+- progress breakdown
+- test results
+- failure details
+- next suggestions
+
+#### Moment 1: Developer Gives Direction
+
+Flow:
+
+```text
+Developer taps -> speaks direction -> agent acknowledges immediately -> agent plans
+```
+
+Data:
+
+- `AgentAcknowledgement`
+
+Voice budget:
+
+- 8 to 16 words
+- must arrive immediately
+- should include what was understood and planning estimate
+
+Voice example:
+
+```text
+Got it. Analysing approval flow. Plan ready in about 10 seconds.
+```
+
+Display:
+
+- interpreted request
+- workspace
+- planning spinner
+- expected time
+
+#### Moment 2: Agent Returns A Plan
+
+Flow:
+
+```text
+Agent finishes planning -> bridge stores plan -> Android displays full plan -> voice asks for decision
+```
+
+Data:
+
+- `AgentPlanConfirmation`
+
+Voice budget:
+
+- maximum 24 words
+- should include step count, top affected areas, risk level, and prompt
+- should not read every step or file
+
+Low-risk voice example:
+
+```text
+3 steps. Updates session store and approval gate. Low risk. Start?
+```
+
+High-risk voice example:
+
+```text
+4 steps. Touches approval flow, relay, and policy engine. High risk. Confirm to proceed.
+```
 
 The display layer carries the full plan, files, risk class, commands, tests, and alternatives.
 
 Rules:
 
-- `spokenSummary` must fit the spoken budget.
-- `confirmationPrompt` must fit the spoken budget.
+- the spoken plan summary must fit the spoken budget
 - Do not read every step through earbuds by default.
 - Say the riskiest area and approval gesture, not a complete implementation essay.
 - If the plan is complex, offer detail on demand or show it on Android.
 - Approval creates or unlocks an `actionId`; it does not bypass later hard approvals.
 
-Examples:
+#### Moment 3: Developer Responds To The Plan
 
-| Plan Situation | Speak | Display Direction |
-| --- | --- | --- |
-| Small safe plan | "Plan ready: update the relay fallback, then run bridge tests. Right double tap to approve." | Two-step plan, files, test command |
-| Multi-file refactor | "Six-step plan ready. Main risk is approval state. Review on phone, or right double tap to approve." | Full plan, risk, affected files, test matrix |
-| Needs redirect | "I can do that, but pairing and audit both change. Say redirect, or approve from the phone." | Safer alternatives and why |
-| Hard approval ahead | "Plan ready, but deploy remains hard-approval gated. I can prepare changes only." | Plan split into prepare versus deploy |
+Flow:
+
+```text
+Developer confirms, redirects, or cancels -> bridge records decision -> agent proceeds, replans, or stops
+```
+
+Data:
+
+- `AgentPlanResponse`
+
+Voice budget:
+
+- 1 to 6 words
+- decision acknowledgement only
+
+Decision mapping:
+
+| Developer Response | Input Path | Voice | Bridge Event |
+| --- | --- | --- | --- |
+| Confirm | Right double tap | "Starting now." | `agent_plan_confirmed` |
+| Redirect | Wake + speak | "Heard. Replanning." | `agent_plan_redirect` |
+| Cancel | Both hold | "Cancelled." | `agent_plan_cancelled` |
 
 Redirect examples:
 
@@ -648,6 +923,142 @@ Redirect examples:
 - "Skip implementation and explain the risk."
 - "Run impact analysis first."
 - "Use Hermes instead of OpenClaw for this task."
+
+Display:
+
+- confirmed plan state
+- redirected utterance when present
+- cancellation timestamp
+- next agent state
+
+#### Moment 4: Agent Reports Progress During Work
+
+Flow:
+
+```text
+Approved plan runs -> progress is silent by default -> tap asks for status -> blocking issues interrupt
+```
+
+Data:
+
+- `AgentProgressEvent`
+
+Default behavior:
+
+- silent while work is healthy
+- no periodic spoken interruptions
+- Android Activity tab updates continuously
+- tap during active work returns a soft status report
+- blocking issue interrupts and asks for input
+
+Tap status voice example:
+
+```text
+Step 2 of 4. Updating the session store. All good.
+```
+
+Blocking issue voice example:
+
+```text
+Stuck on step 3. Two ways to handle this. Want to hear them?
+```
+
+Display:
+
+- completed steps
+- current step
+- next step
+- elapsed time
+- logs or commands where safe
+- blocking options when input is needed
+
+#### Moment 5: Risky Action Approval Mid-Plan
+
+Flow:
+
+```text
+Agent reaches risky action -> bridge policy triggers existing approval -> Android and earbuds use current approval UX
+```
+
+Data:
+
+- existing `ApprovalRequest`
+
+No new agent-specific approval path is allowed.
+
+Voice budget:
+
+- maximum 12 words where practical
+- must include action, risk class, countdown, and prompt
+
+Voice example:
+
+```text
+Commit staged files. Hard approval. 12 seconds. Approve?
+```
+
+Rules:
+
+- right double tap approves
+- reject/cancel gestures stay unchanged
+- countdown UI stays unchanged
+- audit log stays unchanged
+- agent confidence never skips approval
+- hard approval remains hard approval
+
+#### Moment 6: Agent Completes Or Fails
+
+Flow:
+
+```text
+Agent finishes, fails, or partially completes -> bridge emits completion report -> Android shows detail -> voice closes loop
+```
+
+Data:
+
+- `AgentCompletionReport`
+
+Voice budget:
+
+- maximum 24 words
+- should include outcome, count/area changed, test state or failure reason, and next choice when useful
+
+Success voice example:
+
+```text
+Done. Refactored approval flow across 4 files. Tests still passing.
+```
+
+Failure voice example:
+
+```text
+Stopped at step 3. Couldn't resolve the session store conflict. Want to try differently?
+```
+
+Partial voice example:
+
+```text
+Completed 3 of 4 steps. Push requires your approval. Ready when you are.
+```
+
+Display:
+
+- completed steps
+- skipped or failed steps
+- changed files
+- test results
+- failure reason
+- next suggestion
+- review-required flag
+
+### Plan Confirmation Examples
+
+| Plan Situation | Speak | Display Direction |
+| --- | --- | --- |
+| Small safe plan | "Plan ready: update the relay fallback, then run bridge tests. Right double tap to approve." | Two-step plan, files, test command |
+| Multi-file refactor | "Six-step plan ready. Main risk is approval state. Review on phone, or right double tap to approve." | Full plan, risk, affected files, test matrix |
+| Needs redirect | "I can do that, but pairing and audit both change. Say redirect, or approve from the phone." | Safer alternatives and why |
+| Hard approval ahead | "Plan ready, but deploy remains hard-approval gated. I can prepare changes only." | Plan split into prepare versus deploy |
 
 ### Example Responses
 
@@ -663,10 +1074,15 @@ Redirect examples:
 
 ## Response Formatter Design
 
-Add a formatter boundary for Intelligence output:
+Add a formatter boundary for Intelligence and agent conversation output:
 
 ```ts
 interface CodeIntelligenceVoiceFormatter {
+  formatAcknowledgement(input: AgentAcknowledgement, context: VoiceContext): string;
+  formatPlanConfirmation(input: AgentPlanConfirmation, context: VoiceContext): string;
+  formatProgressUpdate(input: AgentProgressEvent, context: VoiceContext): string;
+  formatCompletionReport(input: AgentCompletionReport, context: VoiceContext): string;
+  formatBlockingIssue(input: AgentProgressEvent, context: VoiceContext): string;
   formatImpact(result: ImpactResult, context: VoiceContext): JarvisResponseDraft;
   formatContext(result: SymbolContextResult, context: VoiceContext): JarvisResponseDraft;
   formatChanges(result: DetectChangesResult, context: VoiceContext): JarvisResponseDraft;
@@ -674,12 +1090,29 @@ interface CodeIntelligenceVoiceFormatter {
 }
 ```
 
-The formatter converts rich graph results into:
+The agent conversation formatter methods return spoken strings.
+
+Contract:
+
+- every returned spoken string must fit the 24-word budget
+- acknowledgement should usually be 8 to 16 words
+- plan response acknowledgement should usually be 1 to 6 words
+- blocking issue should include the choice point, not all details
+- completion report should include outcome and next useful action
+
+The intelligence formatter methods convert rich graph results into:
 
 - short `speak`
 - richer `display`
 - optional `followUpHint`
 - optional approval or confirmation prompt if the next step is implementation
+
+The bridge combines formatter output with the typed structure:
+
+- `speak` gets the short voice line
+- `display` gets the full detail
+- `autonomy` captures whether the agent continues, waits, or needs direction
+- `approvalRequest` remains the existing safety path for risky actions
 
 ### Blast Radius Format
 
@@ -982,12 +1415,18 @@ Outputs:
 - `AgentRuntime` TypeScript interface
 - `AgentRuntimeRequest`
 - `AgentRuntimeResponse`
+- `AgentAcknowledgement`
 - `AgentPlanConfirmation`
+- `AgentPlanResponse`
 - `AgentProgressEvent`
+- `AgentCompletionReport`
+- six-moment voice conversation state machine
 - agent capability detector
 - degraded/fallback states
 - plan confirmation storage and approval mapping
+- redirect and cancellation handling for active plans
 - approved work execution path through existing policy
+- mid-plan risky actions routed through existing `ApprovalRequest`
 
 ### Workstream 4: Intelligence Layer Boundary
 
@@ -1000,6 +1439,11 @@ Outputs:
 - index state model
 - graph query APIs
 - `CodeIntelligenceVoiceFormatter`
+- `formatAcknowledgement()`
+- `formatPlanConfirmation()`
+- `formatProgressUpdate()`
+- `formatCompletionReport()`
+- `formatBlockingIssue()`
 - no Android-specific intelligence code
 - read-only guarantee for graph/query operations
 
@@ -1063,13 +1507,21 @@ Agent tier is complete when:
 - OpenClaw/Hermes implements `AgentRuntime`
 - bridge sends `AgentRuntimeRequest` with policy constraints
 - agent returns `AgentRuntimeResponse` with normal `JarvisResponse`
+- developer direction returns immediate `AgentAcknowledgement`
 - user can ask the agent for a plan
 - implementation plans return `AgentPlanConfirmation`
+- developer can confirm, redirect, or cancel through `AgentPlanResponse`
 - plan confirmation works through earbuds and Android display
 - partial progress returns through `AgentProgressEvent` and bridge-managed `JarvisResponse`/outbox surfaces
+- active work is silent by default and reports progress on tap
+- blocking issues interrupt with a short decision prompt
+- completion, failure, and partial outcomes return `AgentCompletionReport`
 - risky actions still require approval
+- mid-plan commit/push/delete/deploy/revert actions use existing `ApprovalRequest`
 - agent progress reports return normal `JarvisResponse`
 - fallback is clear when agent runtime is unavailable
+- every agent spoken line stays within the 24-word budget
+- Android Activity tab shows the full detail for every truncated voice summary
 
 ### Tier 3: DevPods + Agent + Intelligence
 
@@ -1082,6 +1534,7 @@ Intelligence tier is complete when:
 - OpenClaw/Hermes can consume query/context/impact/detect_changes
 - intelligence APIs sit behind `AgentRuntime`, not Android
 - blast radius responses use the formatter budget
+- `CodeIntelligenceVoiceFormatter` formats acknowledgement, plan, progress, blocking issue, and completion voice lines
 - Android receives ordinary `JarvisResponse`
 - codegraph cannot execute or approve anything
 - donor provenance and distribution checks are documented

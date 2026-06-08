@@ -97,5 +97,23 @@ export function describeIntent(intent: IntentName): string {
       return 'Revert local changes';
     case 'create_reminder':
       return 'Create a reminder';
+    case 'agent_plan':
+      return 'Plan a multi-step agent action';
+    case 'agent_report':
+      return 'Report agent progress or results';
+    case 'agent_cancel':
+      return 'Cancel the current agent action';
+    case 'agent_redirect':
+      return 'Redirect the current agent';
+    case 'impact_analysis':
+      return 'Analyze change impact';
+    case 'detect_changes':
+      return 'Detect recent code changes';
+    case 'query_symbol':
+      return 'Query code symbol';
+    case 'explain_flow':
+      return 'Explain execution flow';
+    default:
+      return 'Unknown intent';
   }
 }

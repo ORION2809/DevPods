@@ -56,6 +56,12 @@ function mapEvent(event: EarbudEvent): {
       return { event: 'autonomy_continue', utterance: null, approvalAction: null };
     case 'android_autonomy_interrupt':
       return { event: 'autonomy_replan', utterance: event.utterance ?? null, approvalAction: null };
+    case 'android_agent_plan_confirm':
+      return { event: 'agent_plan_confirm', utterance: null, approvalAction: null };
+    case 'android_agent_plan_cancel':
+      return { event: 'agent_plan_cancel', utterance: null, approvalAction: null };
+    case 'android_agent_plan_redirect':
+      return { event: 'agent_plan_redirect', utterance: event.utterance ?? null, approvalAction: null };
     case 'triple_tap_right':
     case 'tap_test_button':
     case 'headset_button_single':
