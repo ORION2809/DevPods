@@ -30,6 +30,8 @@
   "dependencies": {
     "@ladybugdb/core": "^0.16.1",
     "bonjour-service": "^1.4.0",
+    "glob": "^11.1.0",
+    "ignore": "^7.0.5",
     "json5": "^2.2.3",
     "qrcode": "^1.5.4",
     "zod": "^3.24.1"
