@@ -36,7 +36,7 @@ No donor code reshapes the boundary. Donor code becomes the implementation.
 
 | # | GitNexus area | Donor path | DevPods target | Notes |
 |---|---------------|------------|----------------|-------|
-| 5 | Ingestion orchestrator | `src/core/ingestion/pipeline.ts`, `pipeline-phases/runner.ts` | `src/intelligence/ingestion/pipeline.ts` | Wire walker → parser → graph writer into a single pipeline |
+| 5 | Ingestion orchestrator | `src/core/ingestion/pipeline.ts`, `pipeline-phases/runner.ts` | `src/intelligence/gitnexus/ingest-workspace.ts` | ✅ Walker → parser → graph writer wired into single pipeline |
 | 9 | Search stack | `src/core/search/*` | `src/intelligence/search/*` | BM25 and hybrid ranking for usable query quality |
 | 10 | Local backend tool logic | `src/mcp/local/local-backend.ts` | `src/intelligence/local-backend.ts` | Real implementations of `query`, `context`, `impact`, `detect_changes`, `routeMap`, `toolMap` |
 | 11 | Route extraction | `src/core/ingestion/pipeline-phases/routes.ts`, `route-extractors/*` | `src/intelligence/ingestion/routes.ts` | Understanding APIs in developer repos |
@@ -44,6 +44,18 @@ No donor code reshapes the boundary. Donor code becomes the implementation.
 | 13 | Process and community generation | `communities.ts`, `processes.ts` | `src/intelligence/communities.ts` | Execution-flow answers that feel intelligent |
 | 14 | Platform and DB operational safety | `src/core/platform/capabilities.ts`, `src/core/lbug/lbug-config.ts`, `sidecar-recovery.ts` | `src/intelligence/platform/*` | Stability and recoverability |
 | 15 | Tests and fixtures | `test/unit`, `test/integration` | `test/intelligence/*` | Port selectively to prove parity |
+
+### Phase 3a — Ingestion Orchestrator ✅ (2026-06-08)
+
+- `graph-writer.ts` — batch Cypher INSERT for nodes (multi-node CREATE) and relationships (UNWIND + MATCH)
+- `ingest-workspace.ts` — full pipeline: walk → hash-diff → read → parse → write → save-meta → manifest
+- `GitNexusIntelligenceLayer.indexWorkspace()` — public API to trigger indexing
+- Rebuild strategy: full rebuild on any change (MVP), with hash-diff skip when unchanged
+- Clears graph via `DELETE` relationships then `DELETE` nodes (Kuzu-compatible, no `DETACH DELETE`)
+- Structure phase: File + Folder nodes with CONTAINS edges
+- Symbol phase: Function/Class/Interface/Method/Property/CodeElement nodes with DEFINES edges
+- Tests: 6 passing (simple TS workspace, nested folders, unchanged skip, re-index on change, Kotlin, ignore non-source)
+- Layer test: 1 additional passing (`indexWorkspace` end-to-end)
 
 ## Phase 2 — Ingestion Foundation ✅ (2026-06-08)
 

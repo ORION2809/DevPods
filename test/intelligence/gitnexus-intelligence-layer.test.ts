@@ -110,4 +110,20 @@ describe('GitNexusIntelligenceLayer', () => {
     const ctx = await layer.context('foo', workspaceId);
     expect(ctx.symbol).toBe('foo');
   });
+
+  it('can index a workspace via indexWorkspace', async () => {
+    const workspaceId = 'ws-index-via-method';
+    const wsPath = join(tmpDir, 'sample-ws');
+    require('node:fs').mkdirSync(join(wsPath, 'src'), { recursive: true });
+    require('node:fs').writeFileSync(join(wsPath, 'src', 'app.ts'), 'export class App {}', 'utf-8');
+
+    await layer.indexWorkspace(wsPath, workspaceId);
+
+    expect(await layer.getIndexState(workspaceId)).toBe('ready');
+
+    const store = layer.getStore(workspaceId);
+    await store.init();
+    const classes = await store.query("MATCH (c:Class) RETURN c.name AS name");
+    expect(classes.map((r: any) => r.name)).toEqual(['App']);
+  });
 });

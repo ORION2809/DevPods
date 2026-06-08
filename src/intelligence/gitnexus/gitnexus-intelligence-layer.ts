@@ -28,6 +28,7 @@ import type {
 } from '../intelligence-layer-contract';
 import type { IntelligenceIndexState } from '../../protocol/schemas';
 import { GraphStore } from './graph/graph-store';
+import { ingestWorkspace, type IngestWorkspaceOptions } from './ingest-workspace';
 
 export interface GitNexusIntelligenceLayerOptions {
   /** Base directory for all intelligence indexes. Default: runtime-data/intelligence */
@@ -75,7 +76,7 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
    * the hex digest as the directory name. The resolved path is
    * asserted to stay under indexBasePath.
    */
-  private resolveWorkspaceDbPath(workspaceId: string): { dbPath: string; manifestPath: string; dir: string } {
+  resolveWorkspaceDbPath(workspaceId: string): { dbPath: string; manifestPath: string; dir: string } {
     const hash = createHash('sha256').update(workspaceId).digest('hex');
     const dir = path.join(this.indexBasePath, hash);
     const resolvedDir = path.resolve(dir);
@@ -92,7 +93,7 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
     };
   }
 
-  private getStore(workspaceId: string): GraphStore {
+  getStore(workspaceId: string): GraphStore {
     let store = this.stores.get(workspaceId);
     if (!store) {
       const { dbPath } = this.resolveWorkspaceDbPath(workspaceId);
@@ -106,7 +107,7 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
   // Index manifest helpers
   // ========================================================================
 
-  private async readManifest(workspaceId: string): Promise<IndexManifest | null> {
+  async readManifest(workspaceId: string): Promise<IndexManifest | null> {
     const { manifestPath } = this.resolveWorkspaceDbPath(workspaceId);
     try {
       const raw = await fs.readFile(manifestPath, 'utf-8');
@@ -131,6 +132,22 @@ export class GitNexusIntelligenceLayer implements IntelligenceLayer {
       version: MANIFEST_VERSION,
     };
     await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+  }
+
+  /**
+   * Index (or re-index) a workspace into the graph store.
+   *
+   * This is NOT part of the IntelligenceLayer contract — it is a
+   * GitNexus-specific operation triggered by CLI commands or background
+   * jobs. The contract methods (`query`, `context`, etc.) are read-only
+   * and assume indexing has already completed.
+   */
+  async indexWorkspace(
+    workspacePath: string,
+    workspaceId: string,
+    options?: IngestWorkspaceOptions,
+  ): Promise<void> {
+    return ingestWorkspace(workspacePath, workspaceId, this, options);
   }
 
   // ========================================================================
