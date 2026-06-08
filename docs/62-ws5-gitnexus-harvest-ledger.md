@@ -57,6 +57,12 @@ No donor code reshapes the boundary. Donor code becomes the implementation.
 - Tests: 6 passing (simple TS workspace, nested folders, unchanged skip, re-index on change, Kotlin, ignore non-source)
 - Layer test: 1 additional passing (`indexWorkspace` end-to-end)
 
+**Post-verification fixes (2026-06-08):**
+- Type safety: cast `unknown[]` query results in tests
+- Manifest unlinked before graph clear to prevent stale `ready` state on crash
+- `clearGraphData` propagates errors instead of swallowing them
+- Folder CONTAINS edges deduplicated via `seenRels` Set
+
 ## Phase 2 — Ingestion Foundation ✅ (2026-06-08)
 
 | # | GitNexus area | DevPods target | Status |
